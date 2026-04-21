@@ -4,40 +4,67 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
+    <meta name="theme-color" content="#1a1f36" />
+    <meta name="description" content="OCM Nexus — Change Management Toolkit by Cognizant" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
-
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <title>OCM Nexus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              navy: { DEFAULT: '#1a1f36', light: '#252b48', dark: '#12152a', 50: '#f0f1f5', 100: '#d8dbe6' },
+              accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5', 50: '#eef2ff', 100: '#e0e7ff' },
+              amber: { DEFAULT: '#f59e0b', light: '#fbbf24', dark: '#d97706' },
+              teal: { DEFAULT: '#14b8a6', light: '#2dd4bf' },
+              surface: { DEFAULT: '#ffffff', secondary: '#f8fafc' },
+              border: { DEFAULT: '#e2e8f0', light: '#f1f5f9' },
+              text: { primary: '#1e293b', secondary: '#64748b', muted: '#94a3b8' },
+              impact: { low: '#22c55e', medium: '#eab308', high: '#f97316', critical: '#ef4444' },
+              sentiment: { champion: '#22c55e', supporter: '#3b82f6', neutral: '#9ca3af', skeptic: '#f97316', resistor: '#ef4444' },
+            },
+            fontFamily: {
+              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        background-color: #f8fafc;
+        color: #1e293b;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .fade-in { animation: fadeIn 0.4s ease-out; }
+      .slide-up { animation: slideUp 0.35s ease-out; }
+      .slide-right { animation: slideRight 0.3s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes slideRight { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .tab-active { color: #6366f1; border-bottom: 2px solid #6366f1; font-weight: 600; }
+      .tab-inactive { color: #64748b; border-bottom: 2px solid transparent; }
+      .tab-inactive:hover { color: #1e293b; border-bottom-color: #e2e8f0; }
+      .card-hover { transition: all 0.2s ease; }
+      .card-hover:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+      .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
-
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
   </body>
 </html>

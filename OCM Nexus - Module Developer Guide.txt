@@ -1,0 +1,357 @@
+================================================================================
+  OCM NEXUS — MODULE DEVELOPER GUIDE
+  Building Plug-and-Play Modules for OCM Nexus
+================================================================================
+
+AUDIENCE: Cognizant OCM practitioners and developers who want to add new
+modules (e.g., Change Readiness Survey, Resistance Management) to OCM Nexus.
+
+================================================================================
+  1. PREREQUISITES
+================================================================================
+
+Before you begin, ensure you have:
+
+  - Node.js 18+ and npm installed
+  - The ocm-studio codebase cloned/unzipped locally
+  - Basic familiarity with React (functional components, hooks)
+  - A code editor (VS Code or Cursor recommended)
+
+To run the app locally:
+
+  cd ocm-studio
+  npm install
+  npx craco start
+
+The app opens at http://localhost:3000.
+
+================================================================================
+  2. ARCHITECTURE OVERVIEW
+================================================================================
+
+OCM Nexus is a single-page React app built with:
+
+  - React 18 (Create React App + CRACO for webpack customization)
+  - Tailwind CSS v3 (loaded via CDN in public/index.html)
+  - Anthropic Claude API for AI features (direct browser calls)
+  - localStorage for data persistence (no backend required)
+  - pptxgenjs for PowerPoint exports, jsPDF for PDF exports
+
+KEY DIRECTORIES:
+
+  src/
+    components/       Shared UI components (Header, Sidebar, AIChat, etc.)
+    context/          AppContext.jsx — global state, API key, data persistence
+    modules/          Each module is a self-contained folder
+      _ModuleTemplate/  YOUR STARTING POINT — copy this folder
+      ChangeImpactAssessment/
+      StakeholderAnalysis/
+      CommunicationsGenerator/
+      TrainingGenerator/
+      index.js        MODULE REGISTRY — register your module here
+    pages/            Workspace.jsx — renders the active module
+    utils/            initiativeContext.js — cross-module AI context sharing
+
+DATA FLOW:
+
+  1. User selects an initiative from the sidebar
+  2. Workspace.jsx loads the active module and passes props:
+       data        — the module's persisted data for this initiative
+       setData     — function to save data back (auto-persisted to localStorage)
+       initiative  — the full initiative object (all modules' data)
+       moduleId    — this module's ID string
+  3. Your module manages its own internal state, calling setData() on changes
+  4. AI calls use enhancePromptWithContext() to inject cross-module context
+
+================================================================================
+  3. STEP-BY-STEP: CREATING A NEW MODULE
+================================================================================
+
+STEP 1: Copy the Template
+--------------------------
+  Copy  src/modules/_ModuleTemplate/
+  To    src/modules/YourModuleName/
+
+  Your folder should contain:
+    index.jsx       — Main component (state, tabs, layout)
+    InputForm.jsx   — Data entry table/form
+    AIAssist.jsx    — AI extraction and insights
+    schema.js       — Constants, empty row factory, AI prompts
+
+STEP 2: Define Your Schema (schema.js)
+----------------------------------------
+  This is where you define:
+
+  a) CONSTANTS — dropdown options, categories, severity levels, etc.
+     Example:
+       export const RESISTANCE_LEVELS = ['Low', 'Moderate', 'High', 'Extreme'];
+
+  b) emptyRow() — factory function returning a new data entry with unique ID
+     Example:
+       export const emptyRow = () => ({
+         id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+         stakeholder: '',
+         resistanceLevel: RESISTANCE_LEVELS[0],
+         rootCause: '',
+         mitigationStrategy: '',
+       });
+
+  c) MOCK_DATA — sample rows for demonstration (optional but recommended)
+
+  d) AI_SYSTEM_PROMPT — tells Claude what to extract and the JSON format
+     CRITICAL: Be very specific about the JSON structure. Include field names,
+     allowed values, and extraction rules. The AI will return exactly what
+     you describe here.
+
+  e) AI_INSIGHTS_PROMPT — prompt for analyzing existing data
+
+STEP 3: Build the Input Form (InputForm.jsx)
+----------------------------------------------
+  The template provides a basic table with add/edit/delete. Customize:
+
+  - Column headers and cell editors
+  - Input types (text, select, number, slider, etc.)
+  - Any special UI like color-coded badges or progress bars
+
+  Props received:
+    rows    — array of data objects
+    setRows — state setter function
+
+STEP 4: Customize AI Assist (AIAssist.jsx)
+--------------------------------------------
+  The template handles:
+  - "Extract from text" — pastes unstructured text, AI returns structured rows
+  - "Generate Insights" — analyzes existing rows, returns text recommendations
+
+  You only need to update:
+  - The field mapping in handleExtract() where AI response maps to emptyRow()
+  - Any field validation/clamping (e.g., ensuring numbers are in range)
+  - Labels and placeholder text
+
+  IMPORTANT: The template already includes enhancePromptWithContext() so your
+  module automatically receives cross-module initiative context in AI calls.
+
+STEP 5: Wire Up the Main Component (index.jsx)
+-------------------------------------------------
+  Update:
+  - Module title and description text
+  - State variables to match your schema
+  - Tab configuration (add Visualization tabs if needed)
+  - The setData() call in useEffect to persist all relevant state
+
+  The component signature MUST accept these props:
+    { data, setData, initiative, moduleId }
+
+STEP 6: Register in the Module Registry
+-----------------------------------------
+  Open src/modules/index.js and add your module:
+
+    import YourModule from './YourModuleName';
+    import { SomeIcon } from 'lucide-react';
+
+    // Add to the moduleRegistry array:
+    {
+      id: 'your-module-id',           // kebab-case, unique
+      label: 'Your Module Name',      // Display name in sidebar
+      icon: SomeIcon,                 // Lucide React icon
+      component: YourModule,          // Your default export
+      description: 'What this module does.',
+      status: 'active',               // 'active' or 'coming-soon'
+    },
+
+  Browse icons at https://lucide.dev/icons
+
+STEP 7 (Optional): Add Cross-Module AI Context
+-------------------------------------------------
+  If your module's data should inform AI calls in OTHER modules, add a
+  summarizer function in src/utils/initiativeContext.js:
+
+    function summarizeYourModule(data) {
+      const rows = data?.rows || [];
+      if (rows.length === 0) return '';
+      // Return a concise text summary of the module's data
+      return `YOUR MODULE: ${rows.length} items identified. Key finding: ...`;
+    }
+
+  Then register it in MODULE_SUMMARIZERS:
+
+    const MODULE_SUMMARIZERS = {
+      ...existing entries,
+      'your-module-id': summarizeYourModule,
+    };
+
+  This means when someone uses the Communications Generator, for example,
+  the AI will automatically know about data from your module too.
+
+================================================================================
+  4. ADDING VISUALIZATIONS (OPTIONAL)
+================================================================================
+
+If your module benefits from charts or visual displays:
+
+  1. Create a Visualization.jsx in your module folder
+  2. Use HTML/CSS or a library (the project doesn't currently bundle a chart
+     library, but you can add one via npm install)
+  3. Add a tab for it in index.jsx:
+       { id: 'viz', label: 'Visualization', icon: BarChart3 }
+  4. Render it conditionally when the tab is active
+
+For export capabilities (PDF/PPTX), look at the ExportControls.jsx files in
+ChangeImpactAssessment or StakeholderAnalysis as reference implementations.
+
+================================================================================
+  5. ADDING EXPORT CAPABILITIES (OPTIONAL)
+================================================================================
+
+PDF EXPORTS:
+  - Import jsPDF: import jsPDF from 'jspdf'
+  - Follow the branding pattern used in other modules:
+    - Navy header bar (fill color: 26, 31, 54)
+    - Teal "cognizant" text (color: 4, 152, 183) at top-left
+    - " | OCM Nexus" separator and label
+    - Report title below in white
+
+POWERPOINT EXPORTS:
+  - Import PptxGenJS: import PptxGenJS from 'pptxgenjs'
+  - Use widescreen layout: { width: 13.33, height: 7.5 }
+  - Include cognizant + OCM Nexus branding on title/summary slides
+  - See TrainingGenerator/AIAssist.jsx for a full example
+
+WORD EXPORTS:
+  - Use the HTML-to-Blob approach (NOT the docx npm package):
+    const blob = new Blob([htmlString], { type: 'application/msword' });
+    saveAs(blob, 'filename.doc');
+  - Include the branding <p class="branding"> header
+
+================================================================================
+  6. CONVERSATIONAL AI REFINEMENT (OPTIONAL)
+================================================================================
+
+For generator-style modules (like Communications or Training), you can add
+the conversational chat refinement panel:
+
+  1. Import the shared component:
+       import AIChat from '../../components/AIChat';
+
+  2. Track the initial user message with a ref:
+       const initialMessageRef = useRef('');
+
+  3. Store the message when generating:
+       initialMessageRef.current = userMessage;
+
+  4. Render the chat panel:
+       <AIChat
+         systemPrompt={AI_SYSTEM_PROMPT}
+         initialUserMessage={initialMessageRef.current}
+         onOutputUpdate={(updated) => setMyState(updated)}
+         hasOutput={!!myGeneratedData}
+         outputLabel="your content type"
+         initiative={initiative}
+         moduleId={moduleId}
+       />
+
+  The chat maintains full conversation history and automatically detects when
+  the AI returns updated JSON to refresh the preview.
+
+================================================================================
+  7. STYLING REFERENCE
+================================================================================
+
+OCM Nexus uses Tailwind CSS v3 with a custom color palette:
+
+  COLORS (defined in public/index.html Tailwind config):
+    accent:      #6366F1  (indigo — primary action color)
+    accent-dark: #4F46E5
+    accent-50:   #EEF2FF
+    navy:        #1A1F36  (dark backgrounds, headers)
+    text-primary:   #1E293B
+    text-secondary: #475569
+    text-muted:     #94A3B8
+    border:         #E2E8F0
+    border-light:   #F1F5F9
+    surface-secondary: #F8FAFC
+
+  COMMON PATTERNS:
+    Card:        bg-white rounded-xl border border-border
+    Card header: px-5 py-3 border-b border-border bg-surface-secondary
+    Button:      px-4 py-2 bg-accent text-white font-medium rounded-lg text-sm
+    Tab active:  tab-active class (defined in index.css)
+    Tab inactive: tab-inactive class
+    Animations:  slide-up, fade-in (defined in index.css)
+
+================================================================================
+  8. TESTING YOUR MODULE
+================================================================================
+
+  1. Run the dev server: npx craco start
+  2. Create a new initiative or open an existing one
+  3. Your module should appear in the sidebar (if status is 'active')
+  4. Test the following:
+     - Adding/editing/deleting rows manually
+     - AI extraction from pasted text (requires API key in Settings)
+     - AI insights generation
+     - Data persistence (refresh the page — data should survive)
+     - Cross-module context (add data in another module, then check if
+       your AI calls reference it)
+  5. Run a production build to verify: npx craco build
+
+================================================================================
+  9. AGENT ARCHITECTURE (FUTURE)
+================================================================================
+
+OCM Nexus is designed to support autonomous AI agents in the future. The
+current architecture supports this through:
+
+  CURRENT FOUNDATION:
+    - Cross-module context sharing (initiativeContext.js) means agents can
+      read data from any module within an initiative
+    - The module registry pattern allows dynamic module discovery
+    - Each module's data is accessible via initiative.modules[moduleId]
+
+  FUTURE AGENT CAPABILITIES:
+    - An agent could orchestrate across modules: "Analyze the stakeholder
+      data and automatically generate communications for each resistance
+      group"
+    - Agents could use the same callClaude() pattern but with multi-step
+      reasoning chains
+    - The enhancePromptWithContext() function is already the integration
+      point — agents would use it to build context-aware prompts
+
+  PREPARING YOUR MODULE FOR AGENTS:
+    - Keep your schema.js AI prompts clean and well-structured
+    - Ensure your emptyRow() produces valid default data
+    - Add a summarizer in initiativeContext.js so agents can understand
+      your module's data
+    - Expose clear data shapes so agents can programmatically read/write
+      your module's state
+
+================================================================================
+  10. CHECKLIST
+================================================================================
+
+  [ ] Copied _ModuleTemplate folder and renamed it
+  [ ] Updated schema.js with domain-specific constants and prompts
+  [ ] Customized InputForm.jsx with appropriate columns
+  [ ] Updated AIAssist.jsx field mappings
+  [ ] Updated index.jsx title, description, and state management
+  [ ] Registered module in src/modules/index.js
+  [ ] (Optional) Added summarizer in src/utils/initiativeContext.js
+  [ ] (Optional) Added visualization component
+  [ ] (Optional) Added export controls (PDF/PPTX/DOC)
+  [ ] Tested manually: data entry, AI features, persistence, build
+  [ ] Production build succeeds: npx craco build
+
+================================================================================
+  QUESTIONS? ISSUES?
+================================================================================
+
+  Contact the OCM Nexus development team within the Cognizant OCM practice.
+  When reporting issues, include:
+    - Module name and file
+    - Steps to reproduce
+    - Browser console errors (F12 -> Console tab)
+    - Screenshots if applicable
+
+================================================================================
+  END OF GUIDE
+================================================================================

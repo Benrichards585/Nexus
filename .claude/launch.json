@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "OCM Nexus Dev Server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["craco", "start"],
+      "port": 3000
+    }
+  ]
+}
