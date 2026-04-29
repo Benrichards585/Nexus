@@ -29,7 +29,8 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "refresh-token": "node scripts/refresh-deploy-token.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -48,5 +49,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "tweetsodium": "^0.0.4"
   }
 }
