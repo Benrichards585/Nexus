@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AI_SYSTEM_PROMPT, AI_ENGAGEMENT_PROMPT, emptyStakeholder } from './schema';
-import { Sparkles, Loader2, AlertCircle, Bot, Wand2 } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, Bot, Wand2, Lock } from 'lucide-react';
 import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
 
 export default function AIAssist({ rows, setRows, aiRecommendations, setAiRecommendations, initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest, passwordRequired, accessGranted } = useApp();
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [recsLoading, setRecsLoading] = useState(false);
@@ -23,6 +23,21 @@ export default function AIAssist({ rows, setRows, aiRecommendations, setAiRecomm
           Add your Anthropic API key in Settings to unlock AI-powered stakeholder extraction and engagement recommendations.
         </p>
         <span className="text-xs text-accent font-medium">Settings → API Key</span>
+      </div>
+    );
+  }
+
+  if (passwordRequired && !accessGranted) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-border p-8 text-center">
+        <div className="w-12 h-12 bg-accent-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <Lock size={22} className="text-accent/40" />
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">AI Features Locked</h3>
+        <p className="text-xs text-text-muted max-w-md mx-auto mb-3">
+          Enter the team passphrase to unlock AI features for this session.
+        </p>
+        <span className="text-xs text-accent font-medium">Settings ⚙ → AI Access</span>
       </div>
     );
   }

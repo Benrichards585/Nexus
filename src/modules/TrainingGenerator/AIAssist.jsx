@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AI_SYSTEM_PROMPT } from './schema';
-import { Sparkles, Loader2, AlertCircle, Bot, Download } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, Bot, Download, Lock } from 'lucide-react';
 import PptxGenJS from 'pptxgenjs';
 import { saveAs } from 'file-saver';
 import AIChat from '../../components/AIChat';
@@ -9,7 +9,7 @@ import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
 
 export default function AIAssist({ formData, sourceText, templateFile, generatedTraining, setGeneratedTraining, initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest, passwordRequired, accessGranted } = useApp();
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
@@ -26,6 +26,21 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
           This module requires an Anthropic API key to generate training materials. Add your key in Settings.
         </p>
         <span className="text-xs text-accent font-medium">Settings → API Key</span>
+      </div>
+    );
+  }
+
+  if (passwordRequired && !accessGranted) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-border p-8 text-center">
+        <div className="w-12 h-12 bg-accent-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <Lock size={22} className="text-accent/40" />
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">AI Features Locked</h3>
+        <p className="text-xs text-text-muted max-w-md mx-auto mb-3">
+          Enter the team passphrase to unlock AI features for this session.
+        </p>
+        <span className="text-xs text-accent font-medium">Settings ⚙ → AI Access</span>
       </div>
     );
   }
