@@ -17,7 +17,7 @@ import { callClaude } from '../utils/aiClient';
  *   moduleId – the current module's ID
  */
 export default function AIChat({ systemPrompt, initialUserMessage, onOutputUpdate, hasOutput, outputLabel = 'output', initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,6 +73,8 @@ Your behavior:
         messages: apiMessages,
         apiKey,
         proxyAvailable,
+        appPassword: accessPassword,
+        onUsage: recordUsage,
       });
 
       const assistantMsg = { role: 'assistant', content: assistantText };

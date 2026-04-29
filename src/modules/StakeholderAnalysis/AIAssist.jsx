@@ -6,7 +6,7 @@ import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
 
 export default function AIAssist({ rows, setRows, aiRecommendations, setAiRecommendations, initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest } = useApp();
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [recsLoading, setRecsLoading] = useState(false);
@@ -27,6 +27,20 @@ export default function AIAssist({ rows, setRows, aiRecommendations, setAiRecomm
     );
   }
 
+  if (!canMakeAIRequest) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-amber/40 p-8 text-center">
+        <div className="w-12 h-12 bg-amber/10 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <Bot size={22} className="text-amber/60" />
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Daily Token Limit Reached</h3>
+        <p className="text-xs text-text-muted max-w-md mx-auto">
+          You've used your {(20000).toLocaleString()}-token daily budget. AI features will reset at midnight.
+        </p>
+      </div>
+    );
+  }
+
   const invokeAI = async (systemPrompt, userMessage) => {
     return callClaude({
       model: 'claude-sonnet-4-20250514',
@@ -35,6 +49,8 @@ export default function AIAssist({ rows, setRows, aiRecommendations, setAiRecomm
       messages: [{ role: 'user', content: userMessage }],
       apiKey,
       proxyAvailable,
+      appPassword: accessPassword,
+      onUsage: recordUsage,
     });
   };
 

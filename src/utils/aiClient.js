@@ -22,9 +22,11 @@ const PROXY_URL = '/api/messages';
  * @param {Array} options.messages - Conversation messages
  * @param {string} [options.apiKey] - Personal API key (if set, bypasses proxy)
  * @param {boolean} [options.proxyAvailable] - Whether the server proxy is available
+ * @param {string} [options.appPassword] - Application access passphrase (sent to proxy)
+ * @param {Function} [options.onUsage] - Callback(inputTokens, outputTokens) for budget tracking
  * @returns {Promise<string>} The assistant's response text
  */
-export async function callClaude({ model, max_tokens, system, messages, apiKey, proxyAvailable }) {
+export async function callClaude({ model, max_tokens, system, messages, apiKey, proxyAvailable, appPassword, onUsage }) {
   // Guard: at least one path must be available
   if (!proxyAvailable && !apiKey) {
     throw new Error('No AI connection available. Add an API key in Settings or contact your admin.');
@@ -41,8 +43,10 @@ export async function callClaude({ model, max_tokens, system, messages, apiKey, 
     headers['x-api-key'] = apiKey;
     headers['anthropic-version'] = '2023-06-01';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  } else if (appPassword) {
+    // Proxy mode: include app passphrase for the server-side gate
+    headers['x-app-password'] = appPassword;
   }
-  // Proxy mode: no API key header needed — server adds it
 
   const body = { model, max_tokens, messages };
   if (system) body.system = system;
@@ -59,6 +63,12 @@ export async function callClaude({ model, max_tokens, system, messages, apiKey, 
   }
 
   const data = await response.json();
+
+  // Report actual token usage for daily budget tracking
+  if (onUsage && data.usage) {
+    onUsage(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+  }
+
   return data.content[0].text;
 }
 
@@ -83,10 +93,29 @@ export async function checkProxyHealth() {
     if (!contentType.includes('application/json')) {
       return false; // SPA fallback returned HTML — proxy not running
     }
-    // A 400 (missing fields) means the proxy IS running. A 500 (no key) also means it's running.
+    // A 400 (missing fields), 401 (password required), or 500 (no key) all mean proxy IS running.
     return true;
   } catch {
     // Network error — proxy not available (e.g., running locally without Azure Functions)
+    return false;
+  }
+}
+
+/**
+ * Check if the proxy requires an application password.
+ * Called once on startup alongside checkProxyHealth().
+ *
+ * @returns {Promise<boolean>} true if the server returns 401 (password required)
+ */
+export async function checkPasswordRequired() {
+  try {
+    const response = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return response.status === 401;
+  } catch {
     return false;
   }
 }

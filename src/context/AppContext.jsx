@@ -1,10 +1,16 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { checkProxyHealth } from '../utils/aiClient';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { checkProxyHealth, checkPasswordRequired } from '../utils/aiClient';
 
 const AppContext = createContext();
 
 const STORAGE_KEY = 'ocm-nexus-data';
 const API_KEY_STORAGE = 'ocm-nexus-api-key';
+const ACCESS_STORAGE_KEY = 'ocm-nexus-access';
+const USAGE_STORAGE_KEY = 'ocm-nexus-usage';
+
+// Daily token budget — roughly 10–15 typical AI interactions.
+// Edit this number to adjust how many tokens each user gets per day.
+export const DAILY_TOKEN_LIMIT = 20000;
 
 // Migrate from old OCM Studio keys if present
 function migrateOldStorage() {
@@ -30,18 +36,94 @@ function loadFromStorage(key, fallback) {
   }
 }
 
+function loadTokenUsage() {
+  try {
+    const data = localStorage.getItem(USAGE_STORAGE_KEY);
+    if (!data) return { date: '', tokensUsed: 0 };
+    return JSON.parse(data);
+  } catch {
+    return { date: '', tokensUsed: 0 };
+  }
+}
+
 export function AppProvider({ children }) {
   const [initiatives, setInitiatives] = useState(() => loadFromStorage(STORAGE_KEY, []));
   const [apiKey, setApiKeyState] = useState(() => localStorage.getItem(API_KEY_STORAGE) || '');
   const [proxyAvailable, setProxyAvailable] = useState(false);
 
-  // Check if the server-side API proxy is available on startup
+  // Access gate state
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [accessPassword, setAccessPasswordState] = useState(
+    () => localStorage.getItem(ACCESS_STORAGE_KEY) || ''
+  );
+
+  // Daily token budget
+  const [tokenUsage, setTokenUsage] = useState(loadTokenUsage);
+
+  // Check proxy availability and whether a password is required on startup
   useEffect(() => {
-    checkProxyHealth().then(setProxyAvailable);
+    async function initAI() {
+      const [available, needsPassword] = await Promise.all([
+        checkProxyHealth(),
+        checkPasswordRequired(),
+      ]);
+      setProxyAvailable(available);
+      setPasswordRequired(needsPassword);
+
+      if (!available || !needsPassword) {
+        // No proxy running, or proxy doesn't enforce a password — grant access automatically.
+        setAccessGranted(true);
+      } else {
+        // Proxy requires a password. If the user has one stored, trust it until the first
+        // failed API call (which will surface an "Access denied" error in the UI).
+        const stored = localStorage.getItem(ACCESS_STORAGE_KEY);
+        if (stored) setAccessGranted(true);
+      }
+    }
+    initAI();
   }, []);
 
   // AI features are enabled if we have a personal key OR the org proxy is available
   const aiEnabled = !!apiKey || proxyAvailable;
+
+  // --- Daily token budget ---
+  const today = new Date().toISOString().split('T')[0];
+  const tokensUsedToday = tokenUsage.date === today ? tokenUsage.tokensUsed : 0;
+  const tokensRemaining = Math.max(0, DAILY_TOKEN_LIMIT - tokensUsedToday);
+  // Require at least 500 tokens free before allowing another request
+  const canMakeAIRequest = tokensRemaining >= 500;
+
+  /**
+   * Record actual token usage returned from the Anthropic API.
+   * Called by aiClient.js via the onUsage callback after each successful request.
+   */
+  const recordUsage = useCallback((inputTokens, outputTokens) => {
+    setTokenUsage(prev => {
+      const currentDate = new Date().toISOString().split('T')[0];
+      // Reset counter if it's a new day
+      const base = prev.date === currentDate
+        ? prev
+        : { date: currentDate, tokensUsed: 0 };
+      const updated = { ...base, tokensUsed: base.tokensUsed + inputTokens + outputTokens };
+      localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  /** Store a validated passphrase and mark the user as having access. */
+  const grantAccess = useCallback((password) => {
+    localStorage.setItem(ACCESS_STORAGE_KEY, password);
+    setAccessPasswordState(password);
+    setAccessGranted(true);
+  }, []);
+
+  /** Clear the stored passphrase (e.g. after an auth failure). */
+  const revokeAccess = useCallback(() => {
+    localStorage.removeItem(ACCESS_STORAGE_KEY);
+    setAccessPasswordState('');
+    setAccessGranted(false);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(initiatives));
@@ -83,6 +165,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
+      // Core data
       initiatives,
       apiKey,
       setApiKey,
@@ -92,6 +175,18 @@ export function AppProvider({ children }) {
       updateInitiativeModuleData,
       deleteInitiative,
       getInitiative,
+      // Access gate
+      passwordRequired,
+      accessGranted,
+      accessPassword,
+      grantAccess,
+      revokeAccess,
+      // Token budget
+      tokensRemaining,
+      tokensUsedToday,
+      canMakeAIRequest,
+      recordUsage,
+      DAILY_TOKEN_LIMIT,
     }}>
       {children}
     </AppContext.Provider>

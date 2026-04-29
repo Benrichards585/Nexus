@@ -6,6 +6,9 @@
  *
  * The function validates the request, enforces model/token limits,
  * and forwards to Anthropic with the org key.
+ *
+ * Access control: if APP_ACCESS_PASSWORD is set in Azure Application Settings,
+ * all requests must include a matching x-app-password header.
  */
 
 const ALLOWED_MODELS = [
@@ -19,6 +22,22 @@ module.exports = async function (context, req) {
   if (req.method !== 'POST') {
     context.res = { status: 405, body: { error: { message: 'Method not allowed' } } };
     return;
+  }
+
+  // --- Password gate ---
+  // If APP_ACCESS_PASSWORD is configured, all requests must supply the matching header.
+  // If the env var is not set, the gate is disabled (useful for local dev and initial setup).
+  const appPassword = process.env.APP_ACCESS_PASSWORD;
+  if (appPassword) {
+    const provided = req.headers['x-app-password'];
+    if (!provided || provided !== appPassword) {
+      context.res = {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+        body: { error: { message: 'Access denied. Invalid or missing application password.' } },
+      };
+      return;
+    }
   }
 
   const { model, max_tokens, system, messages } = req.body || {};

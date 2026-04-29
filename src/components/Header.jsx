@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Settings, LayoutDashboard, Home } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SettingsDrawer from './SettingsDrawer';
+import UsageMeter from './UsageMeter';
 import CognizantLogo from './CognizantLogo';
 
 export default function Header() {
@@ -35,11 +36,12 @@ export default function Header() {
 
           <div className="flex items-center gap-2">
             {aiEnabled && (
-              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-accent/20 rounded-full mr-2">
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-accent/20 rounded-full mr-1">
                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                 <span className="text-[11px] font-medium text-accent-light">AI Connected</span>
               </div>
             )}
+            <UsageMeter />
             <button
               onClick={() => setSettingsOpen(true)}
               className="p-2 rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white"

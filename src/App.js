@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Header from './components/Header';
+import AccessGate from './components/AccessGate';
 import Welcome from './pages/Welcome';
 import Dashboard from './pages/Dashboard';
 import Workspace from './pages/Workspace';
@@ -10,6 +11,7 @@ import './App.css';
 function MainLayout() {
   return (
     <div className="min-h-screen bg-gray-50">
+      <AccessGate />
       <Header />
       <Outlet />
     </div>

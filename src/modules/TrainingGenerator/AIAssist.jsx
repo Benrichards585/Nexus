@@ -9,7 +9,7 @@ import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
 
 export default function AIAssist({ formData, sourceText, templateFile, generatedTraining, setGeneratedTraining, initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest } = useApp();
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
@@ -26,6 +26,20 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
           This module requires an Anthropic API key to generate training materials. Add your key in Settings.
         </p>
         <span className="text-xs text-accent font-medium">Settings → API Key</span>
+      </div>
+    );
+  }
+
+  if (!canMakeAIRequest) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-amber/40 p-8 text-center">
+        <div className="w-12 h-12 bg-amber/10 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <Bot size={22} className="text-amber/60" />
+        </div>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Daily Token Limit Reached</h3>
+        <p className="text-xs text-text-muted max-w-md mx-auto">
+          You've used your {(20000).toLocaleString()}-token daily budget. AI features will reset at midnight.
+        </p>
       </div>
     );
   }
@@ -61,6 +75,8 @@ ${truncatedSource}`;
         messages: [{ role: 'user', content: userMessage }],
         apiKey,
         proxyAvailable,
+        appPassword: accessPassword,
+        onUsage: recordUsage,
       });
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Could not parse AI response');
