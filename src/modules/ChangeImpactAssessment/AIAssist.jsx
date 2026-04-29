@@ -6,7 +6,7 @@ import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
 
 export default function AIAssist({ rows, setRows, aiInsights, setAiInsights, initiative, moduleId }) {
-  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest, tokensRemaining } = useApp();
+  const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage, canMakeAIRequest } = useApp();
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState(false);
