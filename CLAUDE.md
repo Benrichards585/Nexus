@@ -135,8 +135,8 @@ All PDF exports must use the Cognizant header pattern. Copy this block into any 
 const pdf = new jsPDF('l', 'mm', 'a4');  // landscape; use 'p' for portrait
 const pageWidth = pdf.internal.pageSize.getWidth();
 
-// Navy header bar
-pdf.setFillColor(26, 31, 54);
+// Navy header bar — use Cognizant brand navy (#000048), not the old Nexus navy (#1A1F36)
+pdf.setFillColor(0, 0, 72);
 pdf.rect(0, 0, pageWidth, 26, 'F');
 
 // Teal "cognizant" wordmark
