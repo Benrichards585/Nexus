@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { PROGRAM_TYPES, TRAINING_AUDIENCES, OUTPUT_FORMATS } from './schema';
 import { Upload, FileText, X, CheckCircle, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 function FileUploadZone({ label, description, file, onFileChange, accept, required }) {
   const fileRef = useRef(null);
@@ -78,24 +79,45 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
         });
         setSourceText(allText);
       } else if (ext === 'docx') {
-        // For docx we read as text - basic extraction
         const buffer = await file.arrayBuffer();
-        const uint8 = new Uint8Array(buffer);
-        // Try to find readable text content
-        const decoder = new TextDecoder('utf-8', { fatal: false });
-        const rawText = decoder.decode(uint8);
-        // Extract text between XML tags (basic DOCX parsing)
-        const textContent = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        const cleanText = textContent.substring(0, 15000); // Limit to 15k chars
-        setSourceText(cleanText || 'Could not extract text from DOCX. Please also paste key content in the Additional Context field below.');
+        const zip = await JSZip.loadAsync(buffer);
+        const docXml = await zip.file('word/document.xml').async('string');
+        const matches = docXml.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || [];
+        const text = matches
+          .map(m => m.replace(/<[^>]+>/g, ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        setSourceText(
+          text.substring(0, 15000) ||
+          'No readable text found in document. Paste key content in the Additional Context field below.'
+        );
       } else if (ext === 'pptx') {
         const buffer = await file.arrayBuffer();
-        const uint8 = new Uint8Array(buffer);
-        const decoder = new TextDecoder('utf-8', { fatal: false });
-        const rawText = decoder.decode(uint8);
-        const textContent = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        const cleanText = textContent.substring(0, 15000);
-        setSourceText(cleanText || 'Could not extract text from PPTX. Please also paste key content in the Additional Context field below.');
+        const zip = await JSZip.loadAsync(buffer);
+        const slideFiles = Object.keys(zip.files)
+          .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+          .sort((a, b) => {
+            const num = s => parseInt(s.match(/\d+/)[0]);
+            return num(a) - num(b);
+          });
+        const slideTexts = await Promise.all(
+          slideFiles.map(async (path, i) => {
+            const xml = await zip.files[path].async('string');
+            const matches = xml.match(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g) || [];
+            const text = matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ').trim();
+            return text ? `[Slide ${i + 1}] ${text}` : null;
+          })
+        );
+        const text = slideTexts.filter(Boolean).join('\n\n');
+        setSourceText(
+          text.substring(0, 15000) ||
+          'No readable text found in presentation. Paste key content in the Additional Context field below.'
+        );
+      } else if (ext === 'pdf') {
+        setSourceText(
+          'PDF text extraction is not supported in the browser. Please copy and paste the key content from your PDF into the Additional Context field below.'
+        );
       } else {
         setSourceText('Unsupported file format. Please upload .txt, .csv, .xlsx, .docx, or .pptx files.');
       }
@@ -179,7 +201,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
             description="Upload FDD, process docs, or reference material"
             file={sourceFile}
             onFileChange={handleSourceFile}
-            accept=".docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.pdf"
+            accept=".docx,.pptx,.xlsx,.xls,.csv,.txt,.md"
             required
           />
         </div>
