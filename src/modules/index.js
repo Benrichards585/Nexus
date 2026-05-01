@@ -1,4 +1,4 @@
-import { BarChart3, Users, GitBranch, MessageSquare, BookOpen, Mail, GraduationCap } from 'lucide-react';
+import { BarChart3, Users, BookOpen, Mail, GraduationCap, Map } from 'lucide-react';
 import ChangeImpactAssessment from './ChangeImpactAssessment';
 import StakeholderAnalysis from './StakeholderAnalysis';
 import CommunicationsGenerator from './CommunicationsGenerator';
@@ -39,26 +39,18 @@ export const moduleRegistry = [
   },
   {
     id: 'change-readiness',
-    label: 'Change Readiness Survey',
+    label: 'Change Readiness Assessment',
     icon: BookOpen,
     component: null,
     description: 'Assess organizational readiness for change with structured surveys.',
     status: 'coming-soon',
   },
   {
-    id: 'communication-plan',
-    label: 'Communication Planner',
-    icon: MessageSquare,
+    id: 'training-strategy',
+    label: 'Training Strategy',
+    icon: Map,
     component: null,
-    description: 'Plan and track change communication activities.',
-    status: 'coming-soon',
-  },
-  {
-    id: 'resistance-management',
-    label: 'Resistance Management',
-    icon: GitBranch,
-    component: null,
-    description: 'Identify and manage resistance to change.',
+    description: 'Define and document the training approach for a change initiative.',
     status: 'coming-soon',
   },
 ];

@@ -38,6 +38,10 @@ src/modules/MyModuleName/
 
 Copy `src/modules/_ModuleTemplate/` as your starting point. It is fully annotated with instructions.
 
+**Current module roster:**
+- Active: Change Impact Assessment, Stakeholder Analysis, Communications Generator, Training Generator
+- Coming soon (registered, no component yet): Change Readiness Assessment (`change-readiness`), Training Strategy (`training-strategy`)
+
 ### Module contract
 
 `Workspace.jsx` mounts the active module like this:
@@ -135,7 +139,7 @@ All PDF exports must use the Cognizant header pattern. Copy this block into any 
 const pdf = new jsPDF('l', 'mm', 'a4');  // landscape; use 'p' for portrait
 const pageWidth = pdf.internal.pageSize.getWidth();
 
-// Navy header bar — use Cognizant brand navy (#000048), not the old Nexus navy (#1A1F36)
+// Navy header bar — Cognizant brand navy. Always use #000048, never the old Nexus #1A1F36.
 pdf.setFillColor(0, 0, 72);
 pdf.rect(0, 0, pageWidth, 26, 'F');
 
@@ -175,7 +179,7 @@ All contributor work happens on a feature branch:
 feature/[module-name-in-kebab-case]
 ```
 
-Examples: `feature/resistance-management`, `feature/communication-planner`. No contributor commits directly to `main`. Only Ben Richards merges to main.
+Examples: `feature/change-readiness-assessment`, `feature/training-strategy`. No contributor commits directly to `main`. Only Ben Richards merges to main.
 
 ## Files That Must Not Be Modified Without Ben's Approval
 

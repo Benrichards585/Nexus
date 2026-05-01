@@ -14,7 +14,7 @@ export default function ExportControls({ rows, aiRecommendations, vizRef, matrix
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      pdf.setFillColor(26, 31, 54);
+      pdf.setFillColor(0, 0, 72); // Cognizant brand navy #000048
       pdf.rect(0, 0, pageWidth, 26, 'F');
       // Cognizant branding
       pdf.setFont('helvetica', 'normal');

@@ -13,7 +13,7 @@ export default function ExportControls({ rows, aiInsights, vizRef }) {
       const pdf = new jsPDF('l', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
 
-      pdf.setFillColor(26, 31, 54);
+      pdf.setFillColor(0, 0, 72); // Cognizant brand navy #000048
       pdf.rect(0, 0, pageWidth, 26, 'F');
       // Cognizant branding
       pdf.setFont('helvetica', 'normal');

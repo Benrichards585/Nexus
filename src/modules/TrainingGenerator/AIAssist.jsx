@@ -113,7 +113,7 @@ ${truncatedSource}`;
 
       // Title slide
       const titleSlide = pptx.addSlide();
-      titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '1a1f36' } });
+      titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
       titleSlide.addText([
         { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
         { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
@@ -126,7 +126,7 @@ ${truncatedSource}`;
       // Learning Objectives slide
       if (generatedTraining.learningObjectives?.length) {
         const objSlide = pptx.addSlide();
-        objSlide.addText('Learning Objectives', { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '1a1f36', bold: true, fontFace: 'Arial' });
+        objSlide.addText('Learning Objectives', { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
         objSlide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
         const objText = generatedTraining.learningObjectives.map(o => ({ text: `•  ${o}`, options: { fontSize: 16, color: '334155', bullet: false, breakLine: true, lineSpacingMultiple: 1.5 } }));
         objSlide.addText(objText, { x: 0.8, y: 1.4, w: 11.7, h: 5, fontFace: 'Arial' });
@@ -135,7 +135,7 @@ ${truncatedSource}`;
       // Content slides
       (generatedTraining.sections || []).forEach(section => {
         const slide = pptx.addSlide();
-        slide.addText(section.heading, { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '1a1f36', bold: true, fontFace: 'Arial' });
+        slide.addText(section.heading, { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
         slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
         if (section.keyPoints?.length) {
           const bullets = section.keyPoints.map(p => ({ text: `•  ${p}`, options: { fontSize: 15, color: '334155', breakLine: true, lineSpacingMultiple: 1.4 } }));
@@ -148,7 +148,7 @@ ${truncatedSource}`;
 
       // Summary slide
       const sumSlide = pptx.addSlide();
-      sumSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '1a1f36' } });
+      sumSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
       sumSlide.addText([
         { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
         { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
@@ -174,8 +174,8 @@ ${truncatedSource}`;
       let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><style>
 body { font-family: Calibri, Arial, sans-serif; color: #1e293b; line-height: 1.6; }
-h1 { font-size: 28px; color: #1a1f36; margin-top: 0; }
-h2 { font-size: 20px; color: #1a1f36; border-bottom: 2px solid #6366f1; padding-bottom: 4px; margin-top: 24px; }
+h1 { font-size: 28px; color: #000048; margin-top: 0; }
+h2 { font-size: 20px; color: #000048; border-bottom: 2px solid #6366f1; padding-bottom: 4px; margin-top: 24px; }
 .subtitle { font-size: 14px; color: #6366f1; margin-bottom: 24px; }
 .objective { margin: 4px 0; font-size: 13px; }
 .point { margin: 3px 0 3px 12px; font-size: 13px; }
