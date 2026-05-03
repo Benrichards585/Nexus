@@ -85,7 +85,7 @@ ${truncatedSource}`;
 
       const text = await callClaude({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: 4096,
         system: enhancePromptWithContext(AI_SYSTEM_PROMPT, initiative, moduleId),
         messages: [{ role: 'user', content: userMessage }],
         apiKey,

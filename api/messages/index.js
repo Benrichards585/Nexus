@@ -18,6 +18,9 @@ const ALLOWED_MODELS = [
 const MAX_TOKENS_CAP = 16384;
 
 module.exports = async function (context, req) {
+  const startTime = Date.now();
+  context.log(`[ocm-proxy] Request received at ${new Date().toISOString()}`);
+
   // Only allow POST
   if (req.method !== 'POST') {
     context.res = { status: 405, body: { error: { message: 'Method not allowed' } } };
@@ -76,6 +79,8 @@ module.exports = async function (context, req) {
     return;
   }
 
+  context.log(`[ocm-proxy] Sending to Anthropic — model: ${model}, max_tokens: ${cappedTokens}, input_chars: ${JSON.stringify(messages).length}`);
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -105,9 +110,11 @@ module.exports = async function (context, req) {
       return;
     }
 
+    const elapsed = Date.now() - startTime;
     if (!response.ok) {
-      // Log to Azure Function console for diagnostics
-      context.log.warn(`Anthropic API error ${response.status}:`, JSON.stringify(data));
+      context.log.warn(`[ocm-proxy] Anthropic error ${response.status} after ${elapsed}ms:`, JSON.stringify(data));
+    } else {
+      context.log(`[ocm-proxy] Success ${response.status} after ${elapsed}ms — output_tokens: ${data?.usage?.output_tokens}`);
     }
 
     context.res = {
@@ -116,7 +123,8 @@ module.exports = async function (context, req) {
       body: data,
     };
   } catch (err) {
-    context.log.error('Anthropic fetch failed:', err.message);
+    const elapsed = Date.now() - startTime;
+    context.log.error(`[ocm-proxy] Fetch failed after ${elapsed}ms:`, err.message);
     context.res = {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
