@@ -62,7 +62,7 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
   const isReady = formData.programType && formData.trainingAudience && formData.outputFormat && templateFile && sourceText;
 
   const buildUserMessage = () => {
-    const truncatedSource = (sourceText || '').substring(0, 60000);
+    const truncatedSource = (sourceText || '').substring(0, 30000);
     return `Generate training material with these specifications:
 
 Program Type: ${formData.programType}
