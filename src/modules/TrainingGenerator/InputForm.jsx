@@ -89,7 +89,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           .replace(/\s+/g, ' ')
           .trim();
         setSourceText(
-          text.substring(0, 25000) ||
+          text ||
           'No readable text found in document. Paste key content in the Additional Context field below.'
         );
       } else if (ext === 'pptx') {
@@ -111,7 +111,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
         );
         const text = slideTexts.filter(Boolean).join('\n\n');
         setSourceText(
-          text.substring(0, 25000) ||
+          text ||
           'No readable text found in presentation. Paste key content in the Additional Context field below.'
         );
       } else if (ext === 'pdf') {
@@ -210,15 +210,28 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           <div className="text-xs text-accent font-medium animate-pulse">Extracting text from uploaded file...</div>
         )}
 
-        {sourceText && (
+        {sourceText && !sourceText.startsWith('PDF text') && !sourceText.startsWith('Unsupported') && !sourceText.startsWith('Error') && !sourceText.startsWith('No readable') && (
           <div>
-            <label className="text-[10px] text-text-muted font-semibold uppercase mb-1.5 block">
-              Extracted Source Content ({sourceText.length.toLocaleString()} characters)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] text-text-muted font-semibold uppercase">
+                Extracted Source Content ({sourceText.length.toLocaleString()} chars)
+              </label>
+              {sourceText.length > 40000 && (
+                <span className="text-[10px] text-amber-600 font-medium">Large document — generation may take 2–4 min</span>
+              )}
+              {sourceText.length > 60000 && (
+                <span className="text-[10px] text-amber-700 font-medium">
+                  Only the first 60,000 characters will be sent to AI. Trim to the most relevant sections for best results.
+                </span>
+              )}
+            </div>
             <textarea value={sourceText} onChange={e => setSourceText(e.target.value)}
               rows={4}
               className="w-full px-3 py-2.5 border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none bg-surface-secondary" />
           </div>
+        )}
+        {sourceText && (sourceText.startsWith('PDF text') || sourceText.startsWith('Unsupported') || sourceText.startsWith('Error') || sourceText.startsWith('No readable')) && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">{sourceText}</div>
         )}
 
         {/* Additional Context */}

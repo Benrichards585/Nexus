@@ -92,7 +92,23 @@ module.exports = async function (context, req) {
       }),
     });
 
-    const data = await response.json();
+    // Always parse the body — surface Anthropic's error message even on non-200
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseErr) {
+      context.res = {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+        body: { error: { message: `Anthropic returned status ${response.status} with non-JSON body` } },
+      };
+      return;
+    }
+
+    if (!response.ok) {
+      // Log to Azure Function console for diagnostics
+      context.log.warn(`Anthropic API error ${response.status}:`, JSON.stringify(data));
+    }
 
     context.res = {
       status: response.status,
@@ -100,6 +116,7 @@ module.exports = async function (context, req) {
       body: data,
     };
   } catch (err) {
+    context.log.error('Anthropic fetch failed:', err.message);
     context.res = {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
