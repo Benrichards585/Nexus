@@ -87,7 +87,7 @@ ${truncatedSource}`;
       // function timeout (~15-20s vs Sonnet's ~90s for the same token count).
       // Sonnet remains available in the conversational refinement panel below.
       const text = await callClaude({
-        model: 'claude-haiku-4-20250414',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 4096,
         system: enhancePromptWithContext(AI_SYSTEM_PROMPT, initiative, moduleId),
         messages: [{ role: 'user', content: userMessage }],
