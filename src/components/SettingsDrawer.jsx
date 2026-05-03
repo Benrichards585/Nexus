@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Key, Check, Eye, EyeOff, Shield, Building2, Zap, Lock, Unlock, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Key, Check, Eye, EyeOff, Shield, Building2, Lock, Unlock, AlertCircle, Loader2 } from 'lucide-react';
 
 const PROXY_URL = '/api/messages';
 
@@ -160,21 +160,16 @@ export default function SettingsDrawer({ open, onClose }) {
               </div>
             )}
 
-            {/* API Key Section */}
+            {/* API Key Section — only shown in dev mode (no org proxy) */}
+            {!proxyAvailable && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-8 h-8 bg-accent-50 rounded-lg flex items-center justify-center">
                   <Key size={15} className="text-accent" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    {proxyAvailable ? 'Personal API Key (Optional)' : 'Anthropic API Key'}
-                  </h3>
-                  <p className="text-[11px] text-text-muted">
-                    {proxyAvailable
-                      ? 'AI features work without a key. Add a personal key to use your own quota instead.'
-                      : 'Powers AI features across all modules'}
-                  </p>
+                  <h3 className="text-sm font-semibold text-text-primary">Anthropic API Key</h3>
+                  <p className="text-[11px] text-text-muted">Powers AI features across all modules</p>
                 </div>
               </div>
 
@@ -217,30 +212,13 @@ export default function SettingsDrawer({ open, onClose }) {
                   )}
                 </div>
 
-                {/* Status messages */}
-                {apiKey && proxyAvailable ? (
-                  <div className="flex items-center gap-2 text-xs bg-blue-50 text-blue-700 px-3 py-2.5 rounded-lg border border-blue-100">
-                    <Zap size={13} />
-                    <span>Using organization AI (saves your personal quota). Remove your key to always use org access.</span>
-                  </div>
-                ) : apiKey ? (
-                  <div className="flex items-center gap-2 text-xs bg-green-50 text-green-700 px-3 py-2.5 rounded-lg border border-green-100">
-                    <Check size={13} />
-                    <span>Using personal API key — AI features are active across all modules.</span>
-                  </div>
-                ) : proxyAvailable ? (
-                  <div className="flex items-start gap-2 text-xs bg-surface-secondary text-text-secondary px-3 py-2.5 rounded-lg border border-border">
-                    <Shield size={13} className="mt-0.5 shrink-0" />
-                    <span>AI features are active via organization access. Add a personal key only if you prefer to use your own quota.</span>
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-2 text-xs bg-surface-secondary text-text-secondary px-3 py-2.5 rounded-lg border border-border">
-                    <Shield size={13} className="mt-0.5 shrink-0" />
-                    <span>Your key is stored locally in your browser and never sent to any server other than Anthropic's API.</span>
-                  </div>
-                )}
+                <div className="flex items-start gap-2 text-xs bg-surface-secondary text-text-secondary px-3 py-2.5 rounded-lg border border-border">
+                  <Shield size={13} className="mt-0.5 shrink-0" />
+                  <span>Your key is stored locally in your browser and never sent to any server other than Anthropic's API.</span>
+                </div>
               </div>
             </div>
+            )}
 
             {/* Info Section */}
             <div className="border-t border-border pt-5">

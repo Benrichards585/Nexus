@@ -89,7 +89,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           .replace(/\s+/g, ' ')
           .trim();
         setSourceText(
-          text.substring(0, 15000) ||
+          text.substring(0, 25000) ||
           'No readable text found in document. Paste key content in the Additional Context field below.'
         );
       } else if (ext === 'pptx') {
@@ -111,7 +111,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
         );
         const text = slideTexts.filter(Boolean).join('\n\n');
         setSourceText(
-          text.substring(0, 15000) ||
+          text.substring(0, 25000) ||
           'No readable text found in presentation. Paste key content in the Additional Context field below.'
         );
       } else if (ext === 'pdf') {
