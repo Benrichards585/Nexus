@@ -36,17 +36,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Create deployment package
+        run: |
+          cd api
+          zip -r /tmp/ocm-nexus-api.zip .
+          echo "Package: $(du -sh /tmp/ocm-nexus-api.zip)"
 
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
-        with:
-          app-name: 'ocm-nexus-api'
-          package: 'api'
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+      - name: Deploy via Kudu ZipDeploy
+        env:
+          KUDU_USER: ${{ secrets.KUDU_USER }}
+          KUDU_PASS: ${{ secrets.KUDU_PASS }}
+        run: |
+          echo "::add-mask::$KUDU_PASS"
+          KUDU_URL="https://ocm-nexus-api-a0b2hmhvded7hbfy.scm.eastus2-01.azurewebsites.net/api/zipdeploy"
+          echo "Deploying to: $KUDU_URL"
+
+          HTTP_STATUS=$(curl -s -o /tmp/deploy.log -w "%{http_code}" \
+            -X POST \
+            -u "${KUDU_USER}:${KUDU_PASS}" \
+            --data-binary @/tmp/ocm-nexus-api.zip \
+            -H "Content-Type: application/zip" \
+            "$KUDU_URL")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          cat /tmp/deploy.log
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ Deployment successful"
+          else
+            echo "❌ Deployment failed with status $HTTP_STATUS"
+            exit 1
+          fi
 
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
