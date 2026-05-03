@@ -13,7 +13,7 @@
 
 const ALLOWED_MODELS = [
   'claude-sonnet-4-20250514',
-  'claude-3-5-haiku-20241022',
+  'claude-haiku-4-5-20251001',
 ];
 const MAX_TOKENS_CAP = 16384;
 

@@ -83,11 +83,10 @@ ${truncatedSource}`;
       const userMessage = buildUserMessage();
       initialMessageRef.current = userMessage;
 
-      // Haiku for initial generation — fast enough to stay within SWA managed
-      // function timeout (~15-20s vs Sonnet's ~90s for the same token count).
-      // Sonnet remains available in the conversational refinement panel below.
+      // Haiku 4.5 for initial generation — fast and cost-efficient for first draft.
+      // Sonnet 4 remains available in the conversational refinement panel below.
       const text = await callClaude({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
         system: enhancePromptWithContext(AI_SYSTEM_PROMPT, initiative, moduleId),
         messages: [{ role: 'user', content: userMessage }],
