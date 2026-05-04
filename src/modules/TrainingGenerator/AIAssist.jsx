@@ -120,7 +120,7 @@ ${JSON.stringify(generatedTraining)}`;
       const typePrompt = PROGRAM_TYPE_PROMPTS[formData.programType] || PROGRAM_TYPE_PROMPTS['Topic Not Covered Here'];
       const text = await callClaude({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        max_tokens: 4096,
         system: enhancePromptWithContext(typePrompt, initiative, moduleId),
         messages: [{ role: 'user', content: userMessage }],
         apiKey,
