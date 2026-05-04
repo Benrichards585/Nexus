@@ -91,8 +91,10 @@ export function AppProvider({ children }) {
   const today = new Date().toISOString().split('T')[0];
   const tokensUsedToday = tokenUsage.date === today ? tokenUsage.tokensUsed : 0;
   const tokensRemaining = Math.max(0, DAILY_TOKEN_LIMIT - tokensUsedToday);
-  // Require at least 500 tokens free before allowing another request
-  const canMakeAIRequest = tokensRemaining >= 500;
+  // Authenticated users (password holders) bypass the daily budget entirely —
+  // the password is already the trust gate. Budget only applies to unauthenticated
+  // users relying on a personal API key.
+  const canMakeAIRequest = accessGranted || tokensRemaining >= 500;
 
   /**
    * Record actual token usage returned from the Anthropic API.
