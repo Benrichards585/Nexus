@@ -229,12 +229,12 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
               <label className="text-[10px] text-text-muted font-semibold uppercase">
                 Extracted Source Content ({sourceText.length.toLocaleString()} chars)
               </label>
-              {sourceText.length > 20000 && sourceText.length <= 30000 && (
-                <span className="text-[10px] text-amber-600 font-medium">Large document — trim to the most relevant sections for best results</span>
+              {sourceText.length > 80000 && sourceText.length <= 120000 && (
+                <span className="text-[10px] text-amber-600 font-medium">Large document — generation may take 45–60 seconds</span>
               )}
-              {sourceText.length > 30000 && (
+              {sourceText.length > 120000 && (
                 <span className="text-[10px] text-amber-700 font-medium">
-                  Only the first 30,000 characters will be sent to AI. Trim to the most relevant sections above.
+                  Very large document — only the first 120,000 characters will be sent to AI. Trim to the most relevant sections above.
                 </span>
               )}
             </div>
