@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AI_SYSTEM_PROMPT } from './schema';
 import { Sparkles, Loader2, AlertCircle, Bot, Download, Lock } from 'lucide-react';
@@ -13,7 +13,6 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
-  const initialMessageRef = useRef('');
 
   if (!aiEnabled) {
     return (
@@ -78,13 +77,25 @@ SOURCE MATERIAL:
 ${truncatedSource}`;
   };
 
+  // Build a lightweight context message for the AIChat refinement panel.
+  // Uses the generated JSON output — NOT the 30K source document — so every
+  // refinement call stays small and fast through the corporate proxy.
+  const buildRefinementContext = () => {
+    if (!generatedTraining) return '';
+    return `Please help me refine the following training material based on my feedback.
+
+Program: ${formData.programType} · Audience: ${formData.trainingAudience} · Format: ${formData.outputFormat}
+
+CURRENT TRAINING MATERIAL (return the full updated JSON structure when making changes):
+${JSON.stringify(generatedTraining)}`;
+  };
+
   const handleGenerate = async () => {
     if (!isReady) return;
     setLoading(true);
     setError('');
     try {
       const userMessage = buildUserMessage();
-      initialMessageRef.current = userMessage;
 
       // Haiku 4.5 for initial generation — fast and cost-efficient for first draft.
       // Sonnet 4 remains available in the conversational refinement panel below.
@@ -345,7 +356,7 @@ p { font-size: 13px; }
       {/* Conversational Refinement Chat */}
       <AIChat
         systemPrompt={AI_SYSTEM_PROMPT}
-        initialUserMessage={initialMessageRef.current || buildUserMessage()}
+        initialUserMessage={buildRefinementContext()}
         onOutputUpdate={(updated) => setGeneratedTraining(updated)}
         hasOutput={!!generatedTraining}
         outputLabel="training material"
