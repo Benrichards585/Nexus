@@ -68,7 +68,7 @@ Your behavior:
 
       const assistantText = await callClaude({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: 4096,
         system: refinementSystemPrompt,
         messages: apiMessages,
         apiKey,
@@ -81,10 +81,10 @@ Your behavior:
       setMessages(prev => [...prev, assistantMsg]);
 
       // Check if the response contains updated JSON output
-      const jsonMatch = assistantText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+      const jsonStr = extractFirstJsonObject(assistantText);
+      if (jsonStr) {
         try {
-          const parsed = JSON.parse(jsonMatch[0]);
+          const parsed = JSON.parse(jsonStr);
           // Validate it has expected structure (at least a couple of expected keys)
           if (parsed.subjectLine || parsed.emailBody || parsed.title || parsed.sections) {
             onOutputUpdate(parsed);
@@ -251,13 +251,30 @@ Your behavior:
   );
 }
 
+// Helper: extract the outermost JSON object from text using bracket counting.
+// Unlike a greedy regex, this correctly handles cases where trailing text
+// contains braces (e.g. "Updated! {ok?}") and avoids mis-capturing garbage.
+function extractFirstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) return text.substring(start, i + 1);
+    }
+  }
+  return null;
+}
+
 // Helper: format assistant messages — strip raw JSON from display, show explanation text
 function formatAssistantMessage(content) {
   // Check if message contains JSON — show a summary instead of raw JSON
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    const beforeJson = content.substring(0, content.indexOf(jsonMatch[0])).trim();
-    const afterJson = content.substring(content.indexOf(jsonMatch[0]) + jsonMatch[0].length).trim();
+  const jsonStr = extractFirstJsonObject(content);
+  if (jsonStr) {
+    const beforeJson = content.substring(0, content.indexOf(jsonStr)).trim();
+    const afterJson = content.substring(content.indexOf(jsonStr) + jsonStr.length).trim();
     const explanation = beforeJson || afterJson;
 
     if (explanation) {

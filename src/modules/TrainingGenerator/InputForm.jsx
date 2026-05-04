@@ -54,12 +54,17 @@ function FileUploadZone({ label, description, file, onFileChange, accept, requir
 export default function InputForm({ formData, setFormData, templateFile, setTemplateFile, sourceFile, setSourceFile, sourceText, setSourceText }) {
   const update = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
   const [extracting, setExtracting] = useState(false);
+  // sourceError is kept separate from sourceText so error messages never pollute
+  // the content that gets sent to the AI, and so detection doesn't rely on
+  // fragile string prefix checks.
+  const [sourceError, setSourceError] = useState('');
 
   const handleSourceFile = async (file) => {
     setSourceFile(file);
-    if (!file) { setSourceText(''); return; }
+    if (!file) { setSourceText(''); setSourceError(''); return; }
 
     setExtracting(true);
+    setSourceError('');
     try {
       const ext = file.name.split('.').pop().toLowerCase();
       if (ext === 'txt' || ext === 'md') {
@@ -88,10 +93,12 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim();
-        setSourceText(
-          text ||
-          'No readable text found in document. Paste key content in the Additional Context field below.'
-        );
+        if (text) {
+          setSourceText(text);
+        } else {
+          setSourceText('');
+          setSourceError('No readable text found in document. Paste key content in the Additional Context field below.');
+        }
       } else if (ext === 'pptx') {
         const buffer = await file.arrayBuffer();
         const zip = await JSZip.loadAsync(buffer);
@@ -110,25 +117,31 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           })
         );
         const text = slideTexts.filter(Boolean).join('\n\n');
-        setSourceText(
-          text ||
-          'No readable text found in presentation. Paste key content in the Additional Context field below.'
-        );
+        if (text) {
+          setSourceText(text);
+        } else {
+          setSourceText('');
+          setSourceError('No readable text found in presentation. Paste key content in the Additional Context field below.');
+        }
       } else if (ext === 'pdf') {
-        setSourceText(
-          'PDF text extraction is not supported in the browser. Please copy and paste the key content from your PDF into the Additional Context field below.'
-        );
+        setSourceText('');
+        setSourceError('PDF text extraction is not supported in the browser. Please copy and paste the key content from your PDF into the Additional Context field below.');
       } else {
-        setSourceText('Unsupported file format. Please upload .txt, .csv, .xlsx, .docx, or .pptx files.');
+        setSourceText('');
+        setSourceError('Unsupported file format. Please upload .txt, .csv, .xlsx, .docx, or .pptx files.');
       }
     } catch (err) {
-      setSourceText('Error reading file. Please also paste key content in the Additional Context field below.');
+      setSourceText('');
+      setSourceError('Error reading file. Please also paste key content in the Additional Context field below.');
     } finally {
       setExtracting(false);
     }
   };
 
-  const isComplete = formData.programType && formData.trainingAudience && formData.outputFormat && templateFile && sourceFile;
+  // sourceText persists across page reloads; sourceFile does not (File objects
+  // can't be serialized). Treat extracted text as sufficient evidence that the
+  // user already uploaded source material in a prior session.
+  const isComplete = formData.programType && formData.trainingAudience && formData.outputFormat && templateFile && (sourceFile || sourceText.length > 0);
 
   return (
     <div className="bg-white rounded-xl border border-border">
@@ -210,7 +223,7 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
           <div className="text-xs text-accent font-medium animate-pulse">Extracting text from uploaded file...</div>
         )}
 
-        {sourceText && !sourceText.startsWith('PDF text') && !sourceText.startsWith('Unsupported') && !sourceText.startsWith('Error') && !sourceText.startsWith('No readable') && (
+        {sourceText && (
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-[10px] text-text-muted font-semibold uppercase">
@@ -230,8 +243,8 @@ export default function InputForm({ formData, setFormData, templateFile, setTemp
               className="w-full px-3 py-2.5 border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none bg-surface-secondary" />
           </div>
         )}
-        {sourceText && (sourceText.startsWith('PDF text') || sourceText.startsWith('Unsupported') || sourceText.startsWith('Error') || sourceText.startsWith('No readable')) && (
-          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">{sourceText}</div>
+        {sourceError && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">{sourceError}</div>
         )}
 
         {/* Additional Context */}

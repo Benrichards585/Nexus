@@ -59,7 +59,10 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
     );
   }
 
-  const isReady = formData.programType && formData.trainingAudience && formData.outputFormat && templateFile && sourceText;
+  // templateFile is not sent to the AI — only its name is logged in the prompt.
+  // Excluding it from isReady lets users re-generate after a page reload, when
+  // File objects cannot be restored from persisted state but sourceText can.
+  const isReady = formData.programType && formData.trainingAudience && formData.outputFormat && sourceText;
 
   const buildUserMessage = () => {
     const truncatedSource = (sourceText || '').substring(0, 30000);
@@ -253,7 +256,7 @@ p { font-size: 13px; }
         )}
 
         {!isReady && (
-          <span className="text-xs text-text-muted">Complete all required fields and upload both files to generate</span>
+          <span className="text-xs text-text-muted">Complete all required fields and upload source material to generate</span>
         )}
       </div>
 
