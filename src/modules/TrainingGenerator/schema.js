@@ -40,7 +40,7 @@ Critical rules:
 - Steps must be specific and imperative — tell the user exactly what to click, type, select, or look for
 - For Train-the-Trainer audience: add "speakerNotes" on every section with facilitation tips, anticipated questions, and timing guidance
 - For End User audience: omit "speakerNotes" entirely
-- Generate 8-14 sections for thorough coverage — do not truncate due to length`;
+- Generate 6-10 sections — prioritise depth on the most important areas over exhaustive coverage. Be concise within each section.`;
 
 // ---------------------------------------------------------------------------
 // Per-type system prompts
