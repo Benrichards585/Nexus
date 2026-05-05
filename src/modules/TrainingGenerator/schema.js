@@ -40,7 +40,8 @@ Critical rules:
 - Steps must be specific and imperative — tell the user exactly what to click, type, select, or look for
 - For Train-the-Trainer audience: add "speakerNotes" on every section with facilitation tips, anticipated questions, and timing guidance
 - For End User audience: omit "speakerNotes" entirely
-- Generate 6-10 sections — prioritise depth on the most important areas over exhaustive coverage. Be concise within each section.`;
+- Generate 4-6 sections — quality over quantity; users can request additional sections via the refinement chat
+- CONCISENESS IS REQUIRED: keyPoints max 3 bullets · steps max 5 items · faqItems max 3 Q&As · content max 1 sentence · speakerNotes max 2 sentences. Truncated JSON is unusable — staying within the token budget is the highest priority.`;
 
 // ---------------------------------------------------------------------------
 // Per-type system prompts
