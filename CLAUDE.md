@@ -87,13 +87,25 @@ When a module produces data that other modules' AI should reference (stakeholder
 
 ### JSON-only responses
 
-Every AI generation must return a defined JSON structure. No freeform text from the model. Define the JSON schema in `schema.js` before writing `AIAssist.jsx`. Parse with:
+Every AI generation must return a defined JSON structure. No freeform text from the model. Define the JSON schema in `schema.js` before writing `AIAssist.jsx`. Parse with the bracket-counting helper (preferred — handles trailing text with braces correctly):
 
 ```js
-const jsonMatch = result.match(/\{[\s\S]*\}/);
-if (!jsonMatch) throw new Error('Could not parse AI response');
-const parsed = JSON.parse(jsonMatch[0]);
+function extractFirstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) return text.substring(start, i + 1); }
+  }
+  return null;
+}
+const jsonStr = extractFirstJsonObject(text);
+if (!jsonStr) throw new Error('Could not parse AI response');
+const parsed = JSON.parse(jsonStr);
 ```
+
+The greedy regex `result.match(/\{[\s\S]*\}/)` in CLAUDE.md templates is acceptable for simple modules but fails when the response contains trailing text with braces. Use the bracket-counting version for any module with a complex schema.
 
 ### Always use `enhancePromptWithContext()`
 
@@ -111,8 +123,8 @@ This injects the full initiative context (data from all other modules) so Claude
 
 ```js
 callClaude({
-  model: 'claude-sonnet-4-20250514',
-  max_tokens: 4096,
+  model: 'claude-sonnet-4-20250514',  // see model guidance below
+  max_tokens: 4096,                   // see token ceiling below — do not exceed 4096
   system: enhancePromptWithContext(AI_SYSTEM_PROMPT, initiative, moduleId),
   messages: [{ role: 'user', content: userMessage }],
   apiKey,
@@ -122,6 +134,8 @@ callClaude({
 })
 ```
 
+**Model selection:** Use `claude-sonnet-4-20250514` for modules that generate short, structured output (communications, stakeholder insights, impact summaries). Use `claude-haiku-4-5-20251001` for modules that process large source documents (Training Generator) — Haiku is significantly faster and reduces the risk of hitting the network timeout. The AIChat refinement panel always uses Sonnet regardless of which model generated the initial output.
+
 ### Required `useApp()` destructure in every `AIAssist.jsx`
 
 ```js
@@ -130,6 +144,57 @@ const { apiKey, aiEnabled, proxyAvailable, accessPassword, recordUsage,
 ```
 
 Every `AIAssist.jsx` must render three guard states before any AI UI: `!aiEnabled`, `passwordRequired && !accessGranted`, and `!canMakeAIRequest`. Copy these blocks verbatim from any existing module — do not invent new patterns.
+
+## Deployment & Network Constraints
+
+These constraints are real, tested limits discovered in production. Violating them causes silent failures that are difficult to diagnose.
+
+### User model
+
+All users authenticate via the **team passphrase** through the org proxy. There are no personal API key users. Do not add UI, messaging, or code paths that reference personal API keys. The Settings drawer retains the API key field for emergency fallback only — do not surface it in module UI or help text.
+
+Authenticated users (password holders) bypass the daily 20,000-token budget. Unauthenticated users hitting the org proxy directly are blocked. This logic lives in `AppContext.jsx`.
+
+### Corporate SSL proxy
+
+Cognizant's corporate network runs an SSL inspection proxy that intercepts and re-encrypts all outbound HTTPS traffic. This proxy enforces an effective timeout of approximately **25 seconds** on requests, regardless of the Azure Function's configured 10-minute timeout (`api/host.json`).
+
+When a request exceeds this threshold the proxy kills the connection. The Azure SWA routing layer returns the plain-text string `Backend call failure` as a 500 response — **this string does not appear anywhere in our function code**. If you see it, the cause is always a request that took too long, not a bug in `api/messages/index.js`.
+
+### max_tokens ceiling
+
+**4096 is the hard safe ceiling for all modules.** This is not a design choice — it is the empirically tested limit for the corporate proxy environment:
+
+| Value | Result |
+|---|---|
+| 4096 | Stable. Used by all modules. |
+| 6000 | `Backend call failure` (proxy timeout) |
+| 8192 | `Backend call failure` (proxy timeout) |
+
+If a module's output is being truncated at 4096 tokens, the fix is to make the AI prompt produce more concise output — not to raise the token limit. Add explicit conciseness instructions to the schema (e.g. "max 3 bullets per section", "max 5 steps per section").
+
+### Source document size (Training Generator)
+
+The Training Generator sends source material in the user message. Tested limits:
+
+| Size | Behaviour |
+|---|---|
+| < 30K chars | Reliable. Fast. |
+| 30K–80K chars | Works. May be slow. |
+| 80K–120K chars | Warn user: "may take 45–60 seconds" |
+| > 120K chars | Soft cap applied — only first 120K chars sent |
+
+Large source documents increase the input token count, which increases Anthropic processing time, which increases the risk of hitting the 25-second proxy timeout. Recommend users trim source material to the most relevant sections.
+
+### Diagnosing 500 errors
+
+| Error shown in UI | Likely cause | Where to look |
+|---|---|---|
+| `API request failed (500)` | `Backend call failure` from proxy timeout | Reduce max_tokens or source size |
+| `Access denied. Invalid or missing application password.` | Wrong or missing passphrase | User needs to re-enter passphrase in Settings |
+| `Server API key not configured` | ANTHROPIC_API_KEY missing from Azure Application Settings | Azure Portal → Static Web App → Configuration |
+| `Could not parse AI response` | AI output truncated before JSON closed | Reduce max_tokens demand via prompt conciseness rules |
+| `Model not allowed` | Model name not in `ALLOWED_MODELS` in `api/messages/index.js` | Check model string matches exactly |
 
 ## Export Branding
 
@@ -201,6 +266,8 @@ These files are architectural — changes here affect every module and the entir
 
 ## What Not To Do
 
+- **Do not reference personal API keys in module UI or help text.** All users authenticate via the team passphrase. The API key path exists in `aiClient.js` as a fallback but must not be surfaced to users.
+- **Do not raise max_tokens above 4096.** Values of 6000 and 8192 have been tested and both cause `Backend call failure` through the corporate proxy. If output is being truncated, fix the prompt — not the token limit.
 - **Do not install npm packages without discussion.** The build toolchain (craco, polyfills) is fragile. New dependencies that use Node.js built-ins may break the browser build without obvious errors.
 - **Do not modify shared components** (`AIChat`, `Header`, `SettingsDrawer`, `Sidebar`) to support one module's needs. If you need different behavior, create a local component inside your module folder.
 - **Do not destructure values from `useApp()` that you don't use in the component body.** CI treats unused variables as errors.
