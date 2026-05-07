@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Key, Check, Eye, EyeOff, Shield, Building2, Lock, Unlock, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Key, Check, Eye, EyeOff, Shield, Building2, Lock, Unlock, AlertCircle, Loader2, Bug, ChevronDown, ChevronRight, Trash2, RefreshCw } from 'lucide-react';
+import { getLogs, clearLogs } from '../utils/debugLog';
 
 const PROXY_URL = '/api/messages';
 
@@ -15,6 +16,14 @@ export default function SettingsDrawer({ open, onClose }) {
   const [passphraseLoading, setPassphraseLoading] = useState(false);
   const [passphraseError, setPassphraseError] = useState('');
   const [passphraseSuccess, setPassphraseSuccess] = useState(false);
+
+  // Debug log panel state
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
+
+  useEffect(() => {
+    if (open) setDebugLogs(getLogs());
+  }, [open]);
 
   const handleSave = () => {
     setApiKey(inputKey.trim());
@@ -235,6 +244,76 @@ export default function SettingsDrawer({ open, onClose }) {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Debug Log Panel */}
+            <div className="border-t border-border pt-5">
+              <button
+                onClick={() => setDebugOpen(v => !v)}
+                className="flex items-center justify-between w-full text-left group"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Bug size={14} className="text-text-muted" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">Debug Log</h3>
+                    <p className="text-[11px] text-text-muted">{debugLogs.length} entr{debugLogs.length === 1 ? 'y' : 'ies'} stored</p>
+                  </div>
+                </div>
+                {debugOpen ? <ChevronDown size={14} className="text-text-muted" /> : <ChevronRight size={14} className="text-text-muted" />}
+              </button>
+
+              {debugOpen && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setDebugLogs(getLogs())}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-text-secondary border border-border rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <RefreshCw size={11} /> Refresh
+                    </button>
+                    {debugLogs.length > 0 && (
+                      <button
+                        onClick={() => { clearLogs(); setDebugLogs([]); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-600 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={11} /> Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  {debugLogs.length === 0 ? (
+                    <p className="text-xs text-text-muted italic px-1">No log entries yet. Run an AI generation to capture diagnostics.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                      {debugLogs.map(entry => {
+                        const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        const isErr = entry.result === 'error';
+                        return (
+                          <div key={entry.id} className={`rounded-lg border px-3 py-2 text-[11px] ${isErr ? 'bg-red-50 border-red-100' : 'bg-surface-secondary border-border-light'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-text-primary">{entry.module} · {entry.action}</span>
+                              <span className={`font-semibold shrink-0 ${isErr ? 'text-red-600' : 'text-green-600'}`}>
+                                {isErr ? entry.errorClass : 'OK'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5 text-text-muted">
+                              <span>{time}</span>
+                              <span>{entry.durationMs}ms</span>
+                              {!isErr && <span>{(entry.inputTokens + entry.outputTokens).toLocaleString()} tok</span>}
+                              <span className="truncate">{entry.model.replace('claude-', '')}</span>
+                            </div>
+                            {isErr && (
+                              <p className="mt-1 text-red-700 truncate" title={entry.errorMessage}>{entry.errorMessage}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
           </div>

@@ -155,122 +155,311 @@ ${JSON.stringify(generatedTraining)}`;
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // PPTX export — Option C: template injection path + pptxgenjs fallback
+  // ---------------------------------------------------------------------------
+
+  // Inject one section's content into a cloned copy of the template slide XML.
+  // Uses DOMParser/XMLSerializer (standard browser APIs — no extra deps).
+  // Finds <p:ph> placeholders by type/idx and replaces their text content
+  // while preserving the surrounding run-property formatting from the template.
+  const _injectSectionIntoSlide = (templateXml, section) => {
+    const parser = new DOMParser();
+    const serializer = new XMLSerializer();
+    const doc = parser.parseFromString(templateXml, 'application/xml');
+
+    // Build the body text lines for this section (bullets / steps / FAQ / plain)
+    const bodyLines = [];
+    if (section.content) bodyLines.push(section.content);
+    if (section.keyPoints?.length) section.keyPoints.forEach(p => bodyLines.push(`•  ${p}`));
+    if (section.steps?.length) section.steps.forEach(s => bodyLines.push(s));
+    if (section.faqItems?.length) section.faqItems.forEach(f => { bodyLines.push(`Q: ${f.question}`); bodyLines.push(`A: ${f.answer}`); });
+    if (section.comparison?.length) section.comparison.forEach(r => bodyLines.push(`${r.before || ''} → ${r.after || ''} (${r.impact || ''})`));
+    if (section.screenshotPlaceholder) bodyLines.push(`📷 INSERT SCREENSHOT: ${section.screenshotPlaceholder}`);
+
+    const allElements = doc.getElementsByTagName('*');
+
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.localName !== 'sp') continue;
+
+      let ph = null;
+      let txBody = null;
+      const children = el.getElementsByTagName('*');
+      for (let j = 0; j < children.length; j++) {
+        if (children[j].localName === 'ph' && !ph) ph = children[j];
+        if (children[j].localName === 'txBody' && !txBody) txBody = children[j];
+      }
+      if (!ph || !txBody) continue;
+
+      const phType = ph.getAttribute('type') || '';
+      const phIdx = ph.getAttribute('idx') || '';
+      const isTitle = phType === 'title' || phType === 'ctrTitle';
+      const isBody = !isTitle && (phType === 'body' || phType === 'subTitle' || phIdx === '1' || phIdx === '');
+
+      if (!isTitle && !isBody) continue;
+
+      // Preserve the first <a:p> as a formatting template, remove the rest.
+      const existingParas = Array.from(txBody.childNodes).filter(n => n.localName === 'p');
+      const formatPara = existingParas[0];
+      existingParas.forEach(p => txBody.removeChild(p));
+
+      const text = isTitle ? section.heading : (bodyLines.join('\n') || section.heading);
+      const lines = text.split('\n');
+
+      lines.forEach(line => {
+        const para = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:p');
+
+        // Copy run properties from the format template if available
+        if (formatPara) {
+          const templateRpr = formatPara.getElementsByTagName('*');
+          for (let k = 0; k < templateRpr.length; k++) {
+            if (templateRpr[k].localName === 'pPr') {
+              para.appendChild(templateRpr[k].cloneNode(true));
+              break;
+            }
+          }
+        }
+
+        const run = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:r');
+
+        // Copy run property element if available
+        if (formatPara) {
+          const templateRpr = formatPara.getElementsByTagName('*');
+          for (let k = 0; k < templateRpr.length; k++) {
+            if (templateRpr[k].localName === 'rPr') {
+              run.appendChild(templateRpr[k].cloneNode(true));
+              break;
+            }
+          }
+        }
+
+        const t = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:t');
+        t.textContent = line;
+        run.appendChild(t);
+        para.appendChild(run);
+        txBody.appendChild(para);
+      });
+    }
+
+    return serializer.serializeToString(doc);
+  };
+
+  // Update [Content_Types].xml — add an Override entry for each new slide.
+  const _updateContentTypes = (zip, slideCount) => {
+    const ctXml = zip.file('[Content_Types].xml');
+    if (!ctXml) return;
+    ctXml.async('string').then(xml => {
+      const slideType = 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml';
+      let updated = xml;
+      for (let i = 1; i <= slideCount; i++) {
+        const partName = `/ppt/slides/slide${i}.xml`;
+        if (!updated.includes(partName)) {
+          updated = updated.replace('</Types>', `  <Override PartName="${partName}" ContentType="${slideType}"/>\n</Types>`);
+        }
+      }
+      zip.file('[Content_Types].xml', updated);
+    });
+  };
+
+  // Update ppt/_rels/presentation.xml.rels and ppt/presentation.xml to register
+  // any slides beyond what the template already declares.
+  const _updatePresentationManifest = async (zip, templateSlideCount, newSlideCount) => {
+    const relsPath = 'ppt/_rels/presentation.xml.rels';
+    const presPath = 'ppt/presentation.xml';
+    const relsFile = zip.file(relsPath);
+    const presFile = zip.file(presPath);
+    if (!relsFile || !presFile) return;
+
+    let relsXml = await relsFile.async('string');
+    let presXml = await presFile.async('string');
+
+    // Find the highest existing rId number in rels
+    const rIdMatches = [...relsXml.matchAll(/Id="rId(\d+)"/g)];
+    let maxRid = rIdMatches.reduce((m, r) => Math.max(m, parseInt(r[1], 10)), 0);
+
+    // Find the highest existing slide id in presentation.xml
+    const sldIdMatches = [...presXml.matchAll(/id="(\d+)"/g)];
+    let maxSldId = sldIdMatches.reduce((m, r) => Math.max(m, parseInt(r[1], 10)), 255);
+
+    const slideRelType = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide';
+
+    for (let i = templateSlideCount + 1; i <= newSlideCount; i++) {
+      maxRid++;
+      maxSldId++;
+      const rId = `rId${maxRid}`;
+      // Insert new Relationship before closing </Relationships>
+      relsXml = relsXml.replace('</Relationships>',
+        `  <Relationship Id="${rId}" Type="${slideRelType}" Target="slides/slide${i}.xml"/>\n</Relationships>`);
+      // Insert new sldId before closing </p:sldIdLst>
+      presXml = presXml.replace('</p:sldIdLst>',
+        `  <p:sldId id="${maxSldId}" r:id="${rId}"/>\n  </p:sldIdLst>`);
+    }
+
+    zip.file(relsPath, relsXml);
+    zip.file(presPath, presXml);
+  };
+
+  // Template injection path. Returns true if it succeeded, false to fall through.
+  const _exportPptxFromTemplate = async () => {
+    let JSZip;
+    try {
+      JSZip = (await import('jszip')).default;
+    } catch {
+      return false;
+    }
+
+    const arrayBuffer = await templateFile.arrayBuffer();
+    const templateZip = await JSZip.loadAsync(arrayBuffer);
+
+    // Use slide2 as the content-slide template (slide1 is the title slide).
+    const templateSlideXml = await templateZip.file('ppt/slides/slide2.xml')?.async('string');
+    const templateSlideRels = await templateZip.file('ppt/slides/_rels/slide2.xml.rels')?.async('string');
+    if (!templateSlideXml) return false; // Template has no content slide
+
+    // Count how many slides the template already declares
+    const templateSlideCount = Object.keys(templateZip.files)
+      .filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p)).length;
+
+    // Clone the full template ZIP as our output base
+    const outputZip = new JSZip();
+    for (const [path, file] of Object.entries(templateZip.files)) {
+      if (!file.dir) outputZip.file(path, await file.async('uint8array'));
+    }
+
+    const sections = generatedTraining.sections || [];
+    // slide1 = template title, slide2 = first content (already in template), slide3+ = new
+    for (let i = 0; i < sections.length; i++) {
+      const slideNum = i + 2;
+      const slideXml = _injectSectionIntoSlide(templateSlideXml, sections[i]);
+      outputZip.file(`ppt/slides/slide${slideNum}.xml`, slideXml);
+      if (templateSlideRels) {
+        outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, templateSlideRels);
+      }
+    }
+
+    // Register any slides we added beyond what the template had
+    if (sections.length > templateSlideCount - 1) {
+      await _updatePresentationManifest(outputZip, templateSlideCount, sections.length + 1);
+    }
+    _updateContentTypes(outputZip, sections.length + 1);
+
+    const blob = await outputZip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    });
+    saveAs(blob, `Training-${formData.programType.replace(/\s+/g, '-')}.pptx`);
+    return true;
+  };
+
+  // pptxgenjs fallback (Cognizant branding, no template).
+  const _exportPptxDefault = async () => {
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name: 'CUSTOM', width: 13.33, height: 7.5 });
+    pptx.layout = 'CUSTOM';
+
+    // Title slide
+    const titleSlide = pptx.addSlide();
+    titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
+    titleSlide.addText([
+      { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
+      { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
+      { text: 'OCM Nexus', options: { fontSize: 10, color: '94a3b8', fontFace: 'Arial' } },
+    ], { x: 0.8, y: 0.5, w: 11.7 });
+    titleSlide.addText(generatedTraining.title, { x: 0.8, y: 2.2, w: 11.7, fontSize: 32, color: 'FFFFFF', bold: true, fontFace: 'Arial' });
+    titleSlide.addText(`${formData.trainingAudience} Training`, { x: 0.8, y: 3.5, w: 11.7, fontSize: 18, color: '818cf8', fontFace: 'Arial' });
+    titleSlide.addText(`Duration: ${generatedTraining.estimatedDuration || 'TBD'}`, { x: 0.8, y: 4.2, w: 11.7, fontSize: 14, color: '94a3b8', fontFace: 'Arial' });
+
+    // Learning Objectives slide
+    if (generatedTraining.learningObjectives?.length) {
+      const objSlide = pptx.addSlide();
+      objSlide.addText('Learning Objectives', { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
+      objSlide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
+      const objText = generatedTraining.learningObjectives.map(o => ({ text: `•  ${o}`, options: { fontSize: 16, color: '334155', bullet: false, breakLine: true, lineSpacingMultiple: 1.5 } }));
+      objSlide.addText(objText, { x: 0.8, y: 1.4, w: 11.7, h: 5, fontFace: 'Arial' });
+    }
+
+    // Content slides — handle all section types from the extended schema
+    (generatedTraining.sections || []).forEach(section => {
+      const slide = pptx.addSlide();
+      slide.addText(section.heading, { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
+      slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
+
+      const hasScreenshot = !!section.screenshotPlaceholder;
+      const contentH = hasScreenshot ? 4.1 : 5.6;
+      let yPos = 1.25;
+
+      if (section.content) {
+        slide.addText(section.content, { x: 0.8, y: yPos, w: 11.7, h: 0.7, fontSize: 13, color: '475569', fontFace: 'Arial', wrap: true });
+        yPos += 0.85;
+      }
+      if (section.keyPoints?.length) {
+        const bullets = section.keyPoints.map(p => ({ text: `•  ${p}`, options: { fontSize: 14, color: '334155', breakLine: true, lineSpacingMultiple: 1.4 } }));
+        slide.addText(bullets, { x: 0.8, y: yPos, w: 11.7, h: contentH - (yPos - 1.25), fontFace: 'Arial' });
+      }
+      if (section.steps?.length) {
+        const stepRows = section.steps.map(s => ({ text: s, options: { fontSize: 13, color: '1e3a5f', breakLine: true, lineSpacingMultiple: 1.45 } }));
+        slide.addShape(pptx.ShapeType.rect, { x: 0.75, y: yPos - 0.05, w: 11.8, h: contentH - (yPos - 1.25) + 0.05, fill: { color: 'EFF6FF' }, line: { color: 'BFDBFE', pt: 0.75 } });
+        slide.addText(stepRows, { x: 0.95, y: yPos, w: 11.4, h: contentH - (yPos - 1.25), fontFace: 'Arial' });
+      }
+      if (section.comparison?.length) {
+        const headerRow = [
+          { text: 'Before', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '000048' }, align: 'center' } },
+          { text: 'After', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '5128F2' }, align: 'center' } },
+          { text: 'Impact', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '007E1C' }, align: 'center' } },
+        ];
+        const dataRows = section.comparison.map(row => [
+          { text: row.before || '', options: { fontSize: 11, color: '334155' } },
+          { text: row.after || '', options: { fontSize: 11, color: '334155' } },
+          { text: row.impact || '', options: { fontSize: 11, color: '334155', italic: true } },
+        ]);
+        slide.addTable([headerRow, ...dataRows], { x: 0.8, y: yPos, w: 11.7, fontFace: 'Arial', border: { type: 'solid', color: 'E2E8F0', pt: 0.5 }, align: 'left', valign: 'middle' });
+      }
+      if (section.faqItems?.length) {
+        const faqPairs = section.faqItems.flatMap(faq => [
+          { text: `Q: ${faq.question}`, options: { bold: true, fontSize: 13, color: '000048', breakLine: true } },
+          { text: `A: ${faq.answer}`, options: { fontSize: 12, color: '475569', breakLine: true, lineSpacingMultiple: 1.3 } },
+          { text: ' ', options: { fontSize: 8, breakLine: true } },
+        ]);
+        slide.addText(faqPairs, { x: 0.8, y: yPos, w: 11.7, h: contentH, fontFace: 'Arial' });
+      }
+      if (hasScreenshot) {
+        slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 5.55, w: 11.7, h: 1.65, fill: { color: 'FFFBEB' }, line: { color: 'F59E0B', pt: 1 } });
+        slide.addText(`📷  INSERT SCREENSHOT: ${section.screenshotPlaceholder}`, { x: 0.95, y: 5.6, w: 11.4, h: 1.55, fontSize: 10, color: '92400E', italic: true, fontFace: 'Arial', wrap: true, valign: 'middle' });
+      }
+      if (section.speakerNotes) slide.addNotes(section.speakerNotes);
+    });
+
+    // Summary slide
+    const sumSlide = pptx.addSlide();
+    sumSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
+    sumSlide.addText([
+      { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
+      { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
+      { text: 'OCM Nexus', options: { fontSize: 10, color: '94a3b8', fontFace: 'Arial' } },
+    ], { x: 0.8, y: 0.5, w: 11.7 });
+    sumSlide.addText('Thank You', { x: 0.8, y: 2.0, w: 11.7, fontSize: 36, color: 'FFFFFF', bold: true, fontFace: 'Arial', align: 'center' });
+    if (generatedTraining.summary) {
+      sumSlide.addText(generatedTraining.summary, { x: 1.5, y: 3.5, w: 10.3, fontSize: 14, color: '94a3b8', fontFace: 'Arial', align: 'center' });
+    }
+
+    await pptx.writeFile({ fileName: `Training-${formData.programType.replace(/\s+/g, '-')}.pptx` });
+  };
+
   const exportPptx = async () => {
     if (!generatedTraining) return;
     setExporting(true);
     try {
-      const pptx = new PptxGenJS();
-      pptx.defineLayout({ name: 'CUSTOM', width: 13.33, height: 7.5 });
-      pptx.layout = 'CUSTOM';
-
-      // Title slide
-      const titleSlide = pptx.addSlide();
-      titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
-      titleSlide.addText([
-        { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
-        { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
-        { text: 'OCM Nexus', options: { fontSize: 10, color: '94a3b8', fontFace: 'Arial' } },
-      ], { x: 0.8, y: 0.5, w: 11.7 });
-      titleSlide.addText(generatedTraining.title, { x: 0.8, y: 2.2, w: 11.7, fontSize: 32, color: 'FFFFFF', bold: true, fontFace: 'Arial' });
-      titleSlide.addText(`${formData.trainingAudience} Training`, { x: 0.8, y: 3.5, w: 11.7, fontSize: 18, color: '818cf8', fontFace: 'Arial' });
-      titleSlide.addText(`Duration: ${generatedTraining.estimatedDuration || 'TBD'}`, { x: 0.8, y: 4.2, w: 11.7, fontSize: 14, color: '94a3b8', fontFace: 'Arial' });
-
-      // Learning Objectives slide
-      if (generatedTraining.learningObjectives?.length) {
-        const objSlide = pptx.addSlide();
-        objSlide.addText('Learning Objectives', { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
-        objSlide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
-        const objText = generatedTraining.learningObjectives.map(o => ({ text: `•  ${o}`, options: { fontSize: 16, color: '334155', bullet: false, breakLine: true, lineSpacingMultiple: 1.5 } }));
-        objSlide.addText(objText, { x: 0.8, y: 1.4, w: 11.7, h: 5, fontFace: 'Arial' });
+      if (templateFile) {
+        const ok = await _exportPptxFromTemplate();
+        if (!ok) {
+          // Template injection failed — fall back and inform user
+          setError('Could not apply template (unsupported format). Exported with default Cognizant branding.');
+          await _exportPptxDefault();
+        }
+      } else {
+        await _exportPptxDefault();
       }
-
-      // Content slides — handle all section types from the extended schema
-      (generatedTraining.sections || []).forEach(section => {
-        const slide = pptx.addSlide();
-        slide.addText(section.heading, { x: 0.8, y: 0.4, w: 11.7, fontSize: 24, color: '000048', bold: true, fontFace: 'Arial' });
-        slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.0, w: 2, h: 0.04, fill: { color: '6366f1' } });
-
-        // Reserve bottom strip for screenshot placeholder if present
-        const hasScreenshot = !!section.screenshotPlaceholder;
-        const contentH = hasScreenshot ? 4.1 : 5.6;
-        let yPos = 1.25;
-
-        // Narrative paragraph (intro / concept / overview sections)
-        if (section.content) {
-          slide.addText(section.content, { x: 0.8, y: yPos, w: 11.7, h: 0.7, fontSize: 13, color: '475569', fontFace: 'Arial', wrap: true });
-          yPos += 0.85;
-        }
-
-        // Key-point bullets
-        if (section.keyPoints?.length) {
-          const bullets = section.keyPoints.map(p => ({ text: `•  ${p}`, options: { fontSize: 14, color: '334155', breakLine: true, lineSpacingMultiple: 1.4 } }));
-          slide.addText(bullets, { x: 0.8, y: yPos, w: 11.7, h: contentH - (yPos - 1.25), fontFace: 'Arial' });
-        }
-
-        // Numbered steps (process_step sections)
-        if (section.steps?.length) {
-          const stepRows = section.steps.map(s => ({ text: s, options: { fontSize: 13, color: '1e3a5f', breakLine: true, lineSpacingMultiple: 1.45 } }));
-          slide.addShape(pptx.ShapeType.rect, { x: 0.75, y: yPos - 0.05, w: 11.8, h: contentH - (yPos - 1.25) + 0.05, fill: { color: 'EFF6FF' }, line: { color: 'BFDBFE', pt: 0.75 } });
-          slide.addText(stepRows, { x: 0.95, y: yPos, w: 11.4, h: contentH - (yPos - 1.25), fontFace: 'Arial' });
-        }
-
-        // Before / After / Impact comparison table
-        if (section.comparison?.length) {
-          const headerRow = [
-            { text: 'Before', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '000048' }, align: 'center' } },
-            { text: 'After', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '5128F2' }, align: 'center' } },
-            { text: 'Impact', options: { bold: true, fontSize: 12, color: 'FFFFFF', fill: { color: '007E1C' }, align: 'center' } },
-          ];
-          const dataRows = section.comparison.map(row => [
-            { text: row.before || '', options: { fontSize: 11, color: '334155' } },
-            { text: row.after || '', options: { fontSize: 11, color: '334155' } },
-            { text: row.impact || '', options: { fontSize: 11, color: '334155', italic: true } },
-          ]);
-          slide.addTable([headerRow, ...dataRows], {
-            x: 0.8, y: yPos, w: 11.7, fontFace: 'Arial',
-            border: { type: 'solid', color: 'E2E8F0', pt: 0.5 },
-            align: 'left', valign: 'middle',
-          });
-        }
-
-        // FAQ items — Q&A pairs
-        if (section.faqItems?.length) {
-          const faqPairs = section.faqItems.flatMap(faq => [
-            { text: `Q: ${faq.question}`, options: { bold: true, fontSize: 13, color: '000048', breakLine: true } },
-            { text: `A: ${faq.answer}`, options: { fontSize: 12, color: '475569', breakLine: true, lineSpacingMultiple: 1.3 } },
-            { text: ' ', options: { fontSize: 8, breakLine: true } },
-          ]);
-          slide.addText(faqPairs, { x: 0.8, y: yPos, w: 11.7, h: contentH, fontFace: 'Arial' });
-        }
-
-        // Screenshot placeholder — amber callout at the bottom of the slide
-        if (hasScreenshot) {
-          slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 5.55, w: 11.7, h: 1.65, fill: { color: 'FFFBEB' }, line: { color: 'F59E0B', pt: 1 } });
-          slide.addText(`📷  INSERT SCREENSHOT: ${section.screenshotPlaceholder}`, {
-            x: 0.95, y: 5.6, w: 11.4, h: 1.55,
-            fontSize: 10, color: '92400E', italic: true, fontFace: 'Arial', wrap: true, valign: 'middle',
-          });
-        }
-
-        if (section.speakerNotes) {
-          slide.addNotes(section.speakerNotes);
-        }
-      });
-
-      // Summary slide
-      const sumSlide = pptx.addSlide();
-      sumSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000048' } });
-      sumSlide.addText([
-        { text: 'cognizant', options: { fontSize: 12, color: '0498B7', fontFace: 'Arial' } },
-        { text: '  |  ', options: { fontSize: 10, color: '64748b', fontFace: 'Arial' } },
-        { text: 'OCM Nexus', options: { fontSize: 10, color: '94a3b8', fontFace: 'Arial' } },
-      ], { x: 0.8, y: 0.5, w: 11.7 });
-      sumSlide.addText('Thank You', { x: 0.8, y: 2.0, w: 11.7, fontSize: 36, color: 'FFFFFF', bold: true, fontFace: 'Arial', align: 'center' });
-      if (generatedTraining.summary) {
-        sumSlide.addText(generatedTraining.summary, { x: 1.5, y: 3.5, w: 10.3, fontSize: 14, color: '94a3b8', fontFace: 'Arial', align: 'center' });
-      }
-
-      await pptx.writeFile({ fileName: `Training-${formData.programType.replace(/\s+/g, '-')}.pptx` });
     } catch (err) {
       setError('Export failed: ' + err.message);
     } finally {

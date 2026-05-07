@@ -238,13 +238,12 @@ Content begins at `yPos = 36`.
 
 ## Branch Naming
 
-All contributor work happens on a feature branch:
+**Solo development mode (current):** Ben Richards is the sole contributor. Commits may be made directly to `main`, but Claude Code must ask for explicit chat confirmation before every commit and every push. This is the check-and-balance in lieu of a PR review. Reinstate feature branches if other contributors join.
 
+Feature branch convention (for future multi-contributor work):
 ```
 feature/[module-name-in-kebab-case]
 ```
-
-Examples: `feature/change-readiness-assessment`, `feature/training-strategy`. No contributor commits directly to `main`. Only Ben Richards merges to main.
 
 ## Files That Must Not Be Modified Without Ben's Approval
 
