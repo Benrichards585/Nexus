@@ -7,6 +7,7 @@ import { saveAs } from 'file-saver';
 import AIChat from '../../components/AIChat';
 import { enhancePromptWithContext } from '../../utils/initiativeContext';
 import { callClaude } from '../../utils/aiClient';
+import { startLog, completeLog, failLog, formatForClipboard } from '../../utils/debugLog';
 
 // Bracket-counting JSON extractor — avoids greedy regex capturing trailing text with braces.
 function extractFirstJsonObject(text) {
@@ -28,6 +29,8 @@ export default function AIAssist({ formData, sourceText, templateFile, generated
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
+  const [lastLogId, setLastLogId] = useState(null);
+  const [debugCopied, setDebugCopied] = useState(false);
 
   if (!aiEnabled) {
     return (
@@ -111,6 +114,16 @@ ${JSON.stringify(generatedTraining)}`;
     if (!isReady) return;
     setLoading(true);
     setError('');
+
+    const logId = startLog({
+      module: 'TrainingGenerator',
+      action: 'generate',
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 4096,
+      sourceLength: (sourceText || '').length,
+    });
+    setLastLogId(logId);
+
     try {
       const userMessage = buildUserMessage();
 
@@ -126,12 +139,16 @@ ${JSON.stringify(generatedTraining)}`;
         apiKey,
         proxyAvailable,
         appPassword: accessPassword,
-        onUsage: recordUsage,
+        onUsage: (inputTokens, outputTokens) => {
+          recordUsage(inputTokens, outputTokens);
+          completeLog(logId, { inputTokens, outputTokens });
+        },
       });
       const jsonStr = extractFirstJsonObject(text);
       if (!jsonStr) throw new Error('Could not parse AI response');
       setGeneratedTraining(JSON.parse(jsonStr));
     } catch (err) {
+      failLog(logId, { message: err.message });
       setError(err.message);
     } finally {
       setLoading(false);
@@ -402,7 +419,22 @@ p { font-size: 13px; }
       {error && (
         <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 px-4 py-3 rounded-lg border border-red-100">
           <AlertCircle size={15} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
+          <div className="flex-1 min-w-0">
+            <span>{error}</span>
+            {lastLogId && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(formatForClipboard(lastLogId)).then(() => {
+                    setDebugCopied(true);
+                    setTimeout(() => setDebugCopied(false), 2000);
+                  });
+                }}
+                className="mt-1.5 flex items-center gap-1 text-xs text-red-600 hover:text-red-800 underline underline-offset-2 transition-colors"
+              >
+                {debugCopied ? 'Copied!' : 'Copy debug info'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
