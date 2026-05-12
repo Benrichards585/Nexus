@@ -159,102 +159,145 @@ ${JSON.stringify(generatedTraining)}`;
   // PPTX export — Option C: template injection path + pptxgenjs fallback
   // ---------------------------------------------------------------------------
 
+  // Drawing ML namespace constant.
+  const _A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+
+  // Replace the contents of a <p:txBody> with the given lines. Preserves
+  // paragraph- and run-properties from the template's first <a:p> so the
+  // template's font, colour, and bullet styling is inherited.
+  // If `autofit` is true, ensures the parent <a:bodyPr> has <a:normAutofit/>
+  // so PowerPoint shrinks text to fit when content is too long.
+  const _writeTxBodyLines = (doc, txBody, lines, { autofit = false } = {}) => {
+    if (!txBody || lines.length === 0) return;
+
+    // Enable autofit on the body properties (prevents overflow past placeholder bounds)
+    if (autofit) {
+      const txBodyChildren = txBody.childNodes;
+      for (let i = 0; i < txBodyChildren.length; i++) {
+        if (txBodyChildren[i].localName === 'bodyPr') {
+          const bodyPr = txBodyChildren[i];
+          // Remove any existing autofit setting
+          const existing = Array.from(bodyPr.childNodes).filter(n =>
+            ['normAutofit', 'spAutoFit', 'noAutofit'].includes(n.localName)
+          );
+          existing.forEach(e => bodyPr.removeChild(e));
+          bodyPr.appendChild(doc.createElementNS(_A_NS, 'a:normAutofit'));
+          break;
+        }
+      }
+    }
+
+    // Preserve first <a:p> as a formatting template, remove all existing paragraphs
+    const existingParas = Array.from(txBody.childNodes).filter(n => n.localName === 'p');
+    const formatPara = existingParas[0];
+    existingParas.forEach(p => txBody.removeChild(p));
+
+    const findChildByName = (parent, name) => {
+      if (!parent) return null;
+      for (let i = 0; i < parent.childNodes.length; i++) {
+        if (parent.childNodes[i].localName === name) return parent.childNodes[i];
+      }
+      return null;
+    };
+    const templatePPr = findChildByName(formatPara, 'pPr');
+    const templateRPr = findChildByName(findChildByName(formatPara, 'r'), 'rPr');
+
+    lines.forEach(line => {
+      const para = doc.createElementNS(_A_NS, 'a:p');
+      if (templatePPr) para.appendChild(templatePPr.cloneNode(true));
+
+      const run = doc.createElementNS(_A_NS, 'a:r');
+      if (templateRPr) run.appendChild(templateRPr.cloneNode(true));
+
+      const t = doc.createElementNS(_A_NS, 'a:t');
+      t.textContent = line;
+      run.appendChild(t);
+      para.appendChild(run);
+      txBody.appendChild(para);
+    });
+  };
+
   // Inject one section's content into a cloned copy of the template slide XML.
-  // Uses DOMParser/XMLSerializer (standard browser APIs — no extra deps).
-  // Finds <p:ph> placeholders by type/idx and replaces their text content
-  // while preserving the surrounding run-property formatting from the template.
   //
-  // IMPORTANT: only the FIRST body-type placeholder gets injected. Templates
-  // often have multiple body placeholders (idx="1", idx="2") for multi-column
-  // layouts or sidebar callouts — injecting the same content into all of them
-  // produces duplicated/garbled output.
+  // Strategy:
+  //   1. Scan all <p:sp> placeholder shapes to identify what's available.
+  //   2. Title goes into the first title placeholder.
+  //   3. Body content (paragraphs, bullets, steps, FAQ, comparison) goes into
+  //      the first body placeholder, with normAutofit to prevent overflow.
+  //   4. Screenshot description goes into the picture placeholder if one
+  //      exists; otherwise it appends to the body.
+  //   5. All other placeholders (slide numbers, dates, footers, secondary
+  //      bodies) are left untouched.
   const _injectSectionIntoSlide = (templateXml, section) => {
     const parser = new DOMParser();
     const serializer = new XMLSerializer();
     const doc = parser.parseFromString(templateXml, 'application/xml');
 
-    // Build the body text lines for this section (bullets / steps / FAQ / plain)
+    // Build body content (excluding the screenshot description — handled separately)
     const bodyLines = [];
     if (section.content) bodyLines.push(section.content);
     if (section.keyPoints?.length) section.keyPoints.forEach(p => bodyLines.push(`•  ${p}`));
     if (section.steps?.length) section.steps.forEach(s => bodyLines.push(s));
     if (section.faqItems?.length) section.faqItems.forEach(f => { bodyLines.push(`Q: ${f.question}`); bodyLines.push(`A: ${f.answer}`); });
     if (section.comparison?.length) section.comparison.forEach(r => bodyLines.push(`${r.before || ''} → ${r.after || ''} (${r.impact || ''})`));
-    if (section.screenshotPlaceholder) bodyLines.push(`📷 INSERT SCREENSHOT: ${section.screenshotPlaceholder}`);
 
+    const screenshotText = section.screenshotPlaceholder
+      ? `📷 INSERT SCREENSHOT: ${section.screenshotPlaceholder}`
+      : '';
+
+    // Discover all placeholders in document order
+    const placeholders = [];
     const allElements = doc.getElementsByTagName('*');
-    let titleInjected = false;
-    let bodyInjected = false;
-
     for (let i = 0; i < allElements.length; i++) {
       const el = allElements[i];
       if (el.localName !== 'sp') continue;
 
-      let ph = null;
-      let txBody = null;
-      const children = el.getElementsByTagName('*');
-      for (let j = 0; j < children.length; j++) {
-        if (children[j].localName === 'ph' && !ph) ph = children[j];
-        if (children[j].localName === 'txBody' && !txBody) txBody = children[j];
+      let ph = null, txBody = null;
+      for (let j = 0; j < el.childNodes.length; j++) {
+        const c = el.childNodes[j];
+        if (c.localName === 'nvSpPr') {
+          // Recurse into nvSpPr to find <p:ph>
+          const nvSpChildren = c.getElementsByTagName('*');
+          for (let k = 0; k < nvSpChildren.length; k++) {
+            if (nvSpChildren[k].localName === 'ph') { ph = nvSpChildren[k]; break; }
+          }
+        }
+        if (c.localName === 'txBody') txBody = c;
       }
       if (!ph || !txBody) continue;
-
-      const phType = ph.getAttribute('type') || '';
-      const phIdx = ph.getAttribute('idx') || '';
-      // Skip non-text placeholders (pictures, charts, slide numbers, dates, footers)
-      if (['pic', 'chart', 'tbl', 'sldNum', 'dt', 'ftr'].includes(phType)) continue;
-
-      const isTitleCandidate = phType === 'title' || phType === 'ctrTitle';
-      const isBodyCandidate = !isTitleCandidate && (phType === 'body' || phType === 'subTitle' || phIdx === '1' || phIdx === '');
-
-      // Only inject into the FIRST encountered title and FIRST encountered body
-      const isTitle = isTitleCandidate && !titleInjected;
-      const isBody = isBodyCandidate && !bodyInjected && bodyLines.length > 0;
-      if (!isTitle && !isBody) continue;
-
-      if (isTitle) titleInjected = true;
-      if (isBody) bodyInjected = true;
-
-      // Preserve the first <a:p> as a formatting template, remove the rest.
-      const existingParas = Array.from(txBody.childNodes).filter(n => n.localName === 'p');
-      const formatPara = existingParas[0];
-      existingParas.forEach(p => txBody.removeChild(p));
-
-      const lines = isTitle ? [section.heading] : bodyLines;
-
-      lines.forEach(line => {
-        const para = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:p');
-
-        // Copy paragraph properties from the format template if available
-        if (formatPara) {
-          const templateProps = formatPara.getElementsByTagName('*');
-          for (let k = 0; k < templateProps.length; k++) {
-            if (templateProps[k].localName === 'pPr') {
-              para.appendChild(templateProps[k].cloneNode(true));
-              break;
-            }
-          }
-        }
-
-        const run = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:r');
-
-        // Copy run properties from the format template if available
-        if (formatPara) {
-          const templateProps = formatPara.getElementsByTagName('*');
-          for (let k = 0; k < templateProps.length; k++) {
-            if (templateProps[k].localName === 'rPr') {
-              run.appendChild(templateProps[k].cloneNode(true));
-              break;
-            }
-          }
-        }
-
-        const t = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:t');
-        t.textContent = line;
-        run.appendChild(t);
-        para.appendChild(run);
-        txBody.appendChild(para);
+      placeholders.push({
+        sp: el,
+        txBody,
+        type: ph.getAttribute('type') || '',
+        idx: ph.getAttribute('idx') || '',
       });
+    }
+
+    // Pick the first title and first body placeholder
+    const titlePh = placeholders.find(p => p.type === 'title' || p.type === 'ctrTitle');
+    const bodyPh = placeholders.find(p => {
+      if (p === titlePh) return false;
+      if (['pic', 'chart', 'tbl', 'sldNum', 'dt', 'ftr'].includes(p.type)) return false;
+      return p.type === 'body' || p.type === 'subTitle' || p.idx === '1' || p.idx === '';
+    });
+    const picPh = placeholders.find(p => p.type === 'pic');
+
+    // 1. Title
+    if (titlePh && section.heading) {
+      _writeTxBodyLines(doc, titlePh.txBody, [section.heading], { autofit: false });
+    }
+
+    // 2. Body — if no picture placeholder, append screenshot description to body
+    const finalBodyLines = (!picPh && screenshotText)
+      ? [...bodyLines, screenshotText]
+      : bodyLines;
+    if (bodyPh && finalBodyLines.length > 0) {
+      _writeTxBodyLines(doc, bodyPh.txBody, finalBodyLines, { autofit: true });
+    }
+
+    // 3. Picture placeholder — inject screenshot description there if available
+    if (picPh && screenshotText) {
+      _writeTxBodyLines(doc, picPh.txBody, [screenshotText], { autofit: true });
     }
 
     return serializer.serializeToString(doc);
@@ -313,6 +356,62 @@ ${JSON.stringify(generatedTraining)}`;
 
     zip.file(relsPath, relsXml);
     zip.file(presPath, presXml);
+  };
+
+  // Generate a minimal notes slide XML containing one body placeholder with
+  // the given speaker notes text. PowerPoint will render this in Notes Page
+  // view and below the slide in editor view.
+  const _buildNotesSlideXml = (slideNumber, notesText) => {
+    const escaped = (notesText || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>${escaped}</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="4" name="Slide Number Placeholder 3"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldNum" sz="quarter" idx="10"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:fld id="{00000000-0000-0000-0000-000000000000}" type="slidenum"><a:rPr lang="en-US"/><a:t>${slideNumber}</a:t></a:fld><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`;
+  };
+
+  // Attach a notes slide to a given slide N: writes notesSlideN.xml + its rels,
+  // updates the slide's rels to point at the notes slide, and registers an
+  // Override in [Content_Types].xml. Adds the notesMaster reference to
+  // presentation.xml.rels on first call.
+  const _addNotesSlide = async (zip, slideNumber, notesText) => {
+    if (!notesText || !notesText.trim()) return;
+
+    // 1. Write the notes slide XML
+    zip.file(`ppt/notesSlides/notesSlide${slideNumber}.xml`, _buildNotesSlideXml(slideNumber, notesText));
+
+    // 2. Write the notes slide's rels — points at the parent slide + the notesMaster
+    const notesRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide${slideNumber}.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/></Relationships>`;
+    zip.file(`ppt/notesSlides/_rels/notesSlide${slideNumber}.xml.rels`, notesRels);
+
+    // 3. Update the slide's rels to add a relationship to the notes slide
+    const slideRelsPath = `ppt/slides/_rels/slide${slideNumber}.xml.rels`;
+    const slideRelsFile = zip.file(slideRelsPath);
+    if (slideRelsFile) {
+      let slideRels = await slideRelsFile.async('string');
+      if (!slideRels.includes(`notesSlide${slideNumber}.xml`)) {
+        // Pick a new rId greater than any existing one
+        const ridMatches = [...slideRels.matchAll(/Id="rId(\d+)"/g)];
+        const maxRid = ridMatches.reduce((m, r) => Math.max(m, parseInt(r[1], 10)), 0);
+        const newRid = `rId${maxRid + 1}`;
+        const insertion = `<Relationship Id="${newRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${slideNumber}.xml"/>`;
+        slideRels = slideRels.replace('</Relationships>', insertion + '</Relationships>');
+        zip.file(slideRelsPath, slideRels);
+      }
+    }
+
+    // 4. Register the notes slide in [Content_Types].xml (idempotent)
+    const ctFile = zip.file('[Content_Types].xml');
+    if (ctFile) {
+      let ct = await ctFile.async('string');
+      const part = `/ppt/notesSlides/notesSlide${slideNumber}.xml`;
+      if (!ct.includes(part)) {
+        const override = `<Override PartName="${part}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`;
+        ct = ct.replace('</Types>', override + '</Types>');
+        zip.file('[Content_Types].xml', ct);
+      }
+    }
   };
 
   // Remove template slides that the generated training doesn't fill, and prune
@@ -431,13 +530,20 @@ ${JSON.stringify(generatedTraining)}`;
     }
 
     const sections = generatedTraining.sections || [];
+    const isTrainTheTrainer = formData.trainingAudience === 'Train-the-Trainer';
+
     // slide1 = title (just injected above), slide2+ = content sections
     for (let i = 0; i < sections.length; i++) {
       const slideNum = i + 2;
-      const slideXml = _injectSectionIntoSlide(templateSlideXml, sections[i]);
+      const section = sections[i];
+      const slideXml = _injectSectionIntoSlide(templateSlideXml, section);
       outputZip.file(`ppt/slides/slide${slideNum}.xml`, slideXml);
       if (templateSlideRels) {
         outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, templateSlideRels);
+      }
+      // Attach speaker notes for Train-the-Trainer audience when section has them
+      if (isTrainTheTrainer && section.speakerNotes) {
+        await _addNotesSlide(outputZip, slideNum, section.speakerNotes);
       }
     }
 
