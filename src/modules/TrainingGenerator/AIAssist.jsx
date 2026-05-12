@@ -163,6 +163,11 @@ ${JSON.stringify(generatedTraining)}`;
   // Uses DOMParser/XMLSerializer (standard browser APIs — no extra deps).
   // Finds <p:ph> placeholders by type/idx and replaces their text content
   // while preserving the surrounding run-property formatting from the template.
+  //
+  // IMPORTANT: only the FIRST body-type placeholder gets injected. Templates
+  // often have multiple body placeholders (idx="1", idx="2") for multi-column
+  // layouts or sidebar callouts — injecting the same content into all of them
+  // produces duplicated/garbled output.
   const _injectSectionIntoSlide = (templateXml, section) => {
     const parser = new DOMParser();
     const serializer = new XMLSerializer();
@@ -178,6 +183,8 @@ ${JSON.stringify(generatedTraining)}`;
     if (section.screenshotPlaceholder) bodyLines.push(`📷 INSERT SCREENSHOT: ${section.screenshotPlaceholder}`);
 
     const allElements = doc.getElementsByTagName('*');
+    let titleInjected = false;
+    let bodyInjected = false;
 
     for (let i = 0; i < allElements.length; i++) {
       const el = allElements[i];
@@ -194,28 +201,36 @@ ${JSON.stringify(generatedTraining)}`;
 
       const phType = ph.getAttribute('type') || '';
       const phIdx = ph.getAttribute('idx') || '';
-      const isTitle = phType === 'title' || phType === 'ctrTitle';
-      const isBody = !isTitle && (phType === 'body' || phType === 'subTitle' || phIdx === '1' || phIdx === '');
+      // Skip non-text placeholders (pictures, charts, slide numbers, dates, footers)
+      if (['pic', 'chart', 'tbl', 'sldNum', 'dt', 'ftr'].includes(phType)) continue;
 
+      const isTitleCandidate = phType === 'title' || phType === 'ctrTitle';
+      const isBodyCandidate = !isTitleCandidate && (phType === 'body' || phType === 'subTitle' || phIdx === '1' || phIdx === '');
+
+      // Only inject into the FIRST encountered title and FIRST encountered body
+      const isTitle = isTitleCandidate && !titleInjected;
+      const isBody = isBodyCandidate && !bodyInjected && bodyLines.length > 0;
       if (!isTitle && !isBody) continue;
+
+      if (isTitle) titleInjected = true;
+      if (isBody) bodyInjected = true;
 
       // Preserve the first <a:p> as a formatting template, remove the rest.
       const existingParas = Array.from(txBody.childNodes).filter(n => n.localName === 'p');
       const formatPara = existingParas[0];
       existingParas.forEach(p => txBody.removeChild(p));
 
-      const text = isTitle ? section.heading : (bodyLines.join('\n') || section.heading);
-      const lines = text.split('\n');
+      const lines = isTitle ? [section.heading] : bodyLines;
 
       lines.forEach(line => {
         const para = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:p');
 
-        // Copy run properties from the format template if available
+        // Copy paragraph properties from the format template if available
         if (formatPara) {
-          const templateRpr = formatPara.getElementsByTagName('*');
-          for (let k = 0; k < templateRpr.length; k++) {
-            if (templateRpr[k].localName === 'pPr') {
-              para.appendChild(templateRpr[k].cloneNode(true));
+          const templateProps = formatPara.getElementsByTagName('*');
+          for (let k = 0; k < templateProps.length; k++) {
+            if (templateProps[k].localName === 'pPr') {
+              para.appendChild(templateProps[k].cloneNode(true));
               break;
             }
           }
@@ -223,12 +238,12 @@ ${JSON.stringify(generatedTraining)}`;
 
         const run = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:r');
 
-        // Copy run property element if available
+        // Copy run properties from the format template if available
         if (formatPara) {
-          const templateRpr = formatPara.getElementsByTagName('*');
-          for (let k = 0; k < templateRpr.length; k++) {
-            if (templateRpr[k].localName === 'rPr') {
-              run.appendChild(templateRpr[k].cloneNode(true));
+          const templateProps = formatPara.getElementsByTagName('*');
+          for (let k = 0; k < templateProps.length; k++) {
+            if (templateProps[k].localName === 'rPr') {
+              run.appendChild(templateProps[k].cloneNode(true));
               break;
             }
           }
@@ -300,6 +315,82 @@ ${JSON.stringify(generatedTraining)}`;
     zip.file(presPath, presXml);
   };
 
+  // Remove template slides that the generated training doesn't fill, and prune
+  // their entries from [Content_Types].xml, presentation.xml.rels, and
+  // presentation.xml. Templates frequently contain 15-20+ slides; without
+  // pruning, the original content lingers at the end of the output.
+  const _pruneExtraSlides = async (zip, finalSlideCount, templateSlideCount) => {
+    if (templateSlideCount <= finalSlideCount) return;
+
+    const slidesToDelete = [];
+    for (let i = finalSlideCount + 1; i <= templateSlideCount; i++) slidesToDelete.push(i);
+    const deleteSet = new Set(slidesToDelete);
+
+    const parser = new DOMParser();
+    const serializer = new XMLSerializer();
+
+    // 1. Prune ppt/_rels/presentation.xml.rels — track rIds we remove so we can
+    //    delete the matching <p:sldId> entries from presentation.xml.
+    const ridsToRemove = new Set();
+    const relsFile = zip.file('ppt/_rels/presentation.xml.rels');
+    if (relsFile) {
+      const relsXml = await relsFile.async('string');
+      const relsDoc = parser.parseFromString(relsXml, 'application/xml');
+      const rels = Array.from(relsDoc.getElementsByTagName('Relationship'));
+      rels.forEach(rel => {
+        const target = rel.getAttribute('Target') || '';
+        const m = target.match(/slides\/slide(\d+)\.xml$/);
+        if (m && deleteSet.has(parseInt(m[1], 10))) {
+          ridsToRemove.add(rel.getAttribute('Id'));
+          rel.parentNode.removeChild(rel);
+        }
+      });
+      zip.file('ppt/_rels/presentation.xml.rels', serializer.serializeToString(relsDoc));
+    }
+
+    // 2. Prune <p:sldId> entries from ppt/presentation.xml whose r:id matches.
+    const presFile = zip.file('ppt/presentation.xml');
+    if (presFile) {
+      const presXml = await presFile.async('string');
+      const presDoc = parser.parseFromString(presXml, 'application/xml');
+      const sldIds = Array.from(presDoc.getElementsByTagName('*')).filter(e => e.localName === 'sldId');
+      sldIds.forEach(sldId => {
+        // r:id attribute uses the relationships namespace prefix
+        const rId = sldId.getAttribute('r:id') || sldId.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+        if (rId && ridsToRemove.has(rId)) {
+          sldId.parentNode.removeChild(sldId);
+        }
+      });
+      zip.file('ppt/presentation.xml', serializer.serializeToString(presDoc));
+    }
+
+    // 3. Prune Override entries in [Content_Types].xml for the deleted slides.
+    const ctFile = zip.file('[Content_Types].xml');
+    if (ctFile) {
+      const ctXml = await ctFile.async('string');
+      const ctDoc = parser.parseFromString(ctXml, 'application/xml');
+      const overrides = Array.from(ctDoc.getElementsByTagName('Override'));
+      overrides.forEach(o => {
+        const part = o.getAttribute('PartName') || '';
+        const slideM = part.match(/\/ppt\/slides\/slide(\d+)\.xml$/);
+        const notesM = part.match(/\/ppt\/notesSlides\/notesSlide(\d+)\.xml$/);
+        if ((slideM && deleteSet.has(parseInt(slideM[1], 10))) ||
+            (notesM && deleteSet.has(parseInt(notesM[1], 10)))) {
+          o.parentNode.removeChild(o);
+        }
+      });
+      zip.file('[Content_Types].xml', serializer.serializeToString(ctDoc));
+    }
+
+    // 4. Delete the actual slide files (and any associated notes/rels).
+    for (const n of slidesToDelete) {
+      zip.remove(`ppt/slides/slide${n}.xml`);
+      zip.remove(`ppt/slides/_rels/slide${n}.xml.rels`);
+      zip.remove(`ppt/notesSlides/notesSlide${n}.xml`);
+      zip.remove(`ppt/notesSlides/_rels/notesSlide${n}.xml.rels`);
+    }
+  };
+
   // Template injection path. Returns true if it succeeded, false to fall through.
   const _exportPptxFromTemplate = async () => {
     let JSZip;
@@ -327,8 +418,20 @@ ${JSON.stringify(generatedTraining)}`;
       if (!file.dir) outputZip.file(path, await file.async('uint8array'));
     }
 
+    // Inject the training title into slide1 (template's title slide). Pass
+    // a section-shaped object so the same helper handles formatting consistently.
+    const slide1Xml = await templateZip.file('ppt/slides/slide1.xml')?.async('string');
+    if (slide1Xml) {
+      const titleSection = {
+        heading: generatedTraining.title || 'Training',
+        content: `${formData.trainingAudience} · ${generatedTraining.estimatedDuration || 'Duration TBD'}`,
+      };
+      const newSlide1Xml = _injectSectionIntoSlide(slide1Xml, titleSection);
+      outputZip.file('ppt/slides/slide1.xml', newSlide1Xml);
+    }
+
     const sections = generatedTraining.sections || [];
-    // slide1 = template title, slide2 = first content (already in template), slide3+ = new
+    // slide1 = title (just injected above), slide2+ = content sections
     for (let i = 0; i < sections.length; i++) {
       const slideNum = i + 2;
       const slideXml = _injectSectionIntoSlide(templateSlideXml, sections[i]);
@@ -338,11 +441,14 @@ ${JSON.stringify(generatedTraining)}`;
       }
     }
 
+    const finalSlideCount = sections.length + 1;
     // Register any slides we added beyond what the template had
-    if (sections.length > templateSlideCount - 1) {
-      await _updatePresentationManifest(outputZip, templateSlideCount, sections.length + 1);
+    if (finalSlideCount > templateSlideCount) {
+      await _updatePresentationManifest(outputZip, templateSlideCount, finalSlideCount);
     }
-    _updateContentTypes(outputZip, sections.length + 1);
+    // Remove any leftover template slides we didn't use
+    await _pruneExtraSlides(outputZip, finalSlideCount, templateSlideCount);
+    _updateContentTypes(outputZip, finalSlideCount);
 
     const blob = await outputZip.generateAsync({
       type: 'blob',
