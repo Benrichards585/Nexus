@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AI_SYSTEM_PROMPT, PROGRAM_TYPE_PROMPTS } from './schema';
-import { Sparkles, Loader2, AlertCircle, Bot, Download, Lock } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, Bot, Download, Lock, MessageSquare, ArrowDown } from 'lucide-react';
 import PptxGenJS from 'pptxgenjs';
 import { saveAs } from 'file-saver';
 import AIChat from '../../components/AIChat';
@@ -871,6 +871,44 @@ p { font-size: 13px; }
                 <p className="text-xs text-text-secondary mt-1">{generatedTraining.summary}</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Refinement callout — prominent invitation to iterate on the output */}
+      {generatedTraining && (
+        <div className="bg-gradient-to-br from-accent-50 via-accent-50 to-white rounded-xl border-2 border-accent/40 p-6 shadow-sm fade-in">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-accent/30">
+              <MessageSquare size={22} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-bold text-text-primary mb-1">
+                Not quite right? Refine it below.
+              </h3>
+              <p className="text-sm text-text-secondary leading-relaxed mb-3">
+                This is a first draft. Tell the assistant in the chat below what you'd change — add sections, expand topics, simplify language, fix factual errors, or adjust the tone. Each refinement is fast and keeps everything else intact.
+              </p>
+              <div className="bg-white/60 rounded-lg border border-accent/20 p-3 mb-3">
+                <p className="text-xs font-semibold text-accent uppercase tracking-wider mb-2">What would you change?</p>
+                <p className="text-sm text-text-secondary italic">
+                  Share your thoughts on the output — what's missing, what's off, what you'd want more of. Be specific.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-text-muted font-semibold uppercase tracking-wider">Example requests</p>
+                <ul className="space-y-1 text-xs text-text-secondary">
+                  <li className="flex items-start gap-1.5"><span className="text-accent mt-0.5">→</span> "Add a section on rollback procedures and what to do if the system goes down."</li>
+                  <li className="flex items-start gap-1.5"><span className="text-accent mt-0.5">→</span> "Make section 3 more detailed — add more specific click-by-click steps."</li>
+                  <li className="flex items-start gap-1.5"><span className="text-accent mt-0.5">→</span> "Rewrite the FAQ in plainer language for non-technical staff."</li>
+                  <li className="flex items-start gap-1.5"><span className="text-accent mt-0.5">→</span> "The intro is too corporate — make it warmer and more conversational."</li>
+                </ul>
+              </div>
+              <div className="flex items-center gap-1.5 mt-4 text-xs text-accent font-medium">
+                <ArrowDown size={14} className="animate-bounce" />
+                <span>Use the refinement chat below</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
