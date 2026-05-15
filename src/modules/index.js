@@ -1,8 +1,9 @@
-import { BarChart3, Users, Mail, GraduationCap, Map } from 'lucide-react';
+import { BarChart3, Users, Mail, GraduationCap, GaugeCircle, Map } from 'lucide-react';
 import ChangeImpactAssessment from './ChangeImpactAssessment';
 import StakeholderAnalysis from './StakeholderAnalysis';
 import CommunicationsGenerator from './CommunicationsGenerator';
 import TrainingGenerator from './TrainingGenerator';
+import ChangeReadinessAssessment from './ChangeReadinessAssessment';
 
 export const moduleRegistry = [
   {
@@ -35,6 +36,14 @@ export const moduleRegistry = [
     icon: GraduationCap,
     component: TrainingGenerator,
     description: 'Generate training materials in PowerPoint or Word from source documents.',
+    status: 'active',
+  },
+  {
+    id: 'change-readiness-assessment',
+    label: 'Change Readiness Assessment',
+    icon: GaugeCircle,
+    component: ChangeReadinessAssessment,
+    description: 'Design readiness surveys, analyze responses, and produce action plans.',
     status: 'active',
   },
   {
