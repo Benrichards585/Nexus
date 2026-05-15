@@ -1,4 +1,4 @@
-import { BarChart3, Users, BookOpen, Mail, GraduationCap, Map } from 'lucide-react';
+import { BarChart3, Users, Mail, GraduationCap, Map } from 'lucide-react';
 import ChangeImpactAssessment from './ChangeImpactAssessment';
 import StakeholderAnalysis from './StakeholderAnalysis';
 import CommunicationsGenerator from './CommunicationsGenerator';
@@ -36,14 +36,6 @@ export const moduleRegistry = [
     component: TrainingGenerator,
     description: 'Generate training materials in PowerPoint or Word from source documents.',
     status: 'active',
-  },
-  {
-    id: 'change-readiness',
-    label: 'Change Readiness Assessment',
-    icon: BookOpen,
-    component: null,
-    description: 'Assess organizational readiness for change with structured surveys.',
-    status: 'coming-soon',
   },
   {
     id: 'training-strategy',

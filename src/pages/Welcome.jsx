@@ -36,7 +36,6 @@ const PROGRESS = {
   ],
   backlog: [
     'AI Initialization Module',
-    'Change Readiness Assessment',
     'RL Generator',
   ],
 };
