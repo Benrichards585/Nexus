@@ -8,6 +8,10 @@
  * To add context from a new module, add a summarizer function below
  * and register it in MODULE_SUMMARIZERS.
  */
+import {
+  MODULE_ID as CRA_MODULE_ID,
+  summarizeForOtherModules as summarizeCRA,
+} from '../modules/ChangeReadinessAssessment/schema';
 
 // --- Module Summarizers ---
 // Each function receives the module's stored data and returns a short text summary.
@@ -127,6 +131,7 @@ const MODULE_SUMMARIZERS = {
   'stakeholder-analysis': summarizeStakeholders,
   'communications-generator': summarizeCommunications,
   'training-generator': summarizeTraining,
+  [CRA_MODULE_ID]: summarizeCRA,
 };
 
 /**
